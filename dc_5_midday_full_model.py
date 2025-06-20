@@ -70,13 +70,14 @@ def load_manual_filters_from_file(uploaded_file=None, filepath_txt="manual_filte
         return []
     try:
         raw_lines = content.splitlines()
-        st.text_area("Raw manual filter lines", value="\\n".join(raw_lines[:50]), height=200)
-st.text_area("Preview manual filter names", value="\\n".join(p['name'] for p in parsed[:20]), height=200)
-=".join(raw_lines[:50]), height=200), height=200)
+        st.text_area("Raw manual filter lines", value="
+".join(raw_lines[:50]), height=200), height=200)
+".join(raw_lines[:50]), height=200)
         parsed = parse_manual_filters_txt(content)
         st.info(f"Parsed {len(parsed)} manual filter blocks")
         st.text_area("Preview manual filter names", value="
 ".join(p['name'] for p in parsed[:20]), height=200), height=200)
+".join(p['name'] for p in parsed[:20]), height=200)
         return parsed
     except Exception as e:
         st.error(f"Error parsing manual filters: {e}")
