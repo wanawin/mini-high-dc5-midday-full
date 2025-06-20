@@ -145,10 +145,10 @@ def load_manual_filters_from_file(uploaded_file=None,
             if nt:
                 normed.append(nt)
         if normed:
+            # join with separators to preserve structure
             filter_text = " ".join(normed)
             filters.append(filter_text)
-
-    st.text_area("Preview grouped filters", value="\n\n".join(filters[:20]), height=200)
+    st.text_area("Preview grouped filters", value="\n\n".join(filters[:50]), height=200)
     st.write(f"Loaded {len(filters)} manual filter entries (grouped from file)")
     return filters
 
@@ -162,7 +162,7 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
     # Seed Sum rules
-    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft:
+    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft or 'seed sum <=' in ft:
         if seed_sum <= 12:
             low, high = 12, 25
             if total < low or total > high:
@@ -197,17 +197,17 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
             low, high = 19, 25
             if total < low or total > high:
                 return True
-    if 'seed sum ≥26' in ft or 'seed sum >=26' in ft:
+    if 'seed sum ≥26' in ft or 'seed sum >=26' in ft or 'seed sum ≥ 26' in ft:
         if seed_sum >= 26:
             low, high = 20, 28
             if total < low or total > high:
                 return True
-    # Example: Seed Contains logic
+    # Seed Contains logic example
     if 'seed contains 2' in ft:
         if '2' in seed_str:
             if not any(d in combo_str for d in ['5','4']):
                 return True
-    # Extend logic parsing as needed
+    # Add parsing for other manual filters as needed
     return False
 
 # ==============================
