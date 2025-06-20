@@ -8,6 +8,71 @@ import re
 # ==============================
 st.title("🧪 DC-5 Midday Filter App")
 st.success("✅ App loaded: Boot successful.")
+# ==============================
+# Filter Utilities (Restored)
+# ==============================
+
+def parse_manual_filters_txt(raw_text: str):
+    entries = []
+    blocks = [blk.strip() for blk in raw_text.strip().split("\n\n") if blk.strip()]
+    for blk in blocks:
+        lines = [ln.strip() for ln in blk.splitlines() if ln.strip()]
+        if len(lines) >= 4:
+            name = lines[0]
+            type_line = lines[1]
+            logic_line = lines[2]
+            action_line = lines[3]
+            typ = type_line.split(":", 1)[1].strip() if ":" in type_line else type_line
+            logic = logic_line.split(":", 1)[1].strip() if ":" in logic_line else logic_line
+            action = action_line.split(":", 1)[1].strip() if ":" in action_line else action_line
+            entries.append({"name": name, "type": typ, "logic": logic, "action": action})
+        else:
+            st.warning(f"Skipped manual-filter block (not 4 lines): {blk[:50]}...")
+    return entries
+
+def build_filter_functions(parsed_filters):
+    fns = []
+    for pf in parsed_filters:
+        name = pf['name']
+        logic = pf['logic']
+        action = pf['action']
+        lower_name = name.lower()
+        m_seed = re.search(r'seed sum\\s*[≤<=]?\\s*(\\d+)(?:[\\-–](\\d+))?', lower_name)
+        if m_seed:
+            if m_seed.group(2):
+                smin = int(m_seed.group(1)); smax = int(m_seed.group(2))
+            else:
+                val = int(m_seed.group(1))
+                if '≤' in name or '<=' in lower_name:
+                    smin = None; smax = val
+                else:
+                    smin = val; smax = val
+            lt = re.search(r'sum\\s*<\\s*(\\d+)', action)
+            gt = re.search(r'>\\s*(\\d+)', action)
+            low = int(lt.group(1)) if lt else None
+            high = int(gt.group(1)) if gt else None
+            def make_conditional_sum_range_filter(seed_sum_min=None, seed_sum_max=None, low=None, high=None):
+                def filter_fn(combo_list, seed_sum=None, **kwargs):
+                    if seed_sum is None:
+                        return combo_list, []
+                    if seed_sum_min is not None and seed_sum < seed_sum_min:
+                        return combo_list, []
+                    if seed_sum_max is not None and seed_sum > seed_sum_max:
+                        return combo_list, []
+                    keep, removed = [], []
+                    for combo in combo_list:
+                        s = sum(int(d) for d in combo)
+                        if (low is not None and s < low) or (high is not None and s > high):
+                            removed.append(combo)
+                        else:
+                            keep.append(combo)
+                    return keep, removed
+                return filter_fn
+            fn = make_conditional_sum_range_filter(seed_sum_min=smin, seed_sum_max=smax, low=low, high=high)
+            fns.append({'name': name, 'fn': fn, 'descr': logic})
+            continue
+        st.warning(f"No function defined for manual filter: '{name}'")
+    return fns
 
 # ==============================
 # Inline DC-5 Midday Model Functions
