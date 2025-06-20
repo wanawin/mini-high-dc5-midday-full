@@ -43,55 +43,71 @@ def normalize_name(raw_name: str) -> str:
     return s.strip()
 
 # ==============================
-# Real Filter Functions
-# ==============================
-def seed_sum_range_filter(min_sum, max_sum):
-    def filter_fn(combos, seed=None, seed_sum=None):
-        kept, removed = [], []
-        for combo in combos:
-            s = sum(int(d) for d in combo)
-            (kept if min_sum <= s <= max_sum else removed).append(combo)
-        return kept, removed
-    return filter_fn
-
-def must_contain_filter(required_digits):
-    def filter_fn(combos, seed=None, seed_sum=None):
-        kept, removed = [], []
-        for combo in combos:
-            (kept if any(d in combo for d in required_digits) else removed).append(combo)
-        return kept, removed
-    return filter_fn
-
-# ==============================
-# Manual Filter Builder (Ranked)
+# Manual Filter Builder (Ranked, Dynamic)
 # ==============================
 def build_filter_functions(parsed_filters):
-    ranked = [
-        ("01. Seed Sum <= 12", seed_sum_range_filter(12, 25)),
-        ("02. Seed Sum = 13-15", seed_sum_range_filter(14, 22)),
-        ("03. Seed Sum = 16", seed_sum_range_filter(12, 20)),
-        ("04. Seed Sum = 17-18", seed_sum_range_filter(11, 26)),
-        ("05. Seed Sum = 19-21", seed_sum_range_filter(14, 24)),
-        ("06. Seed Sum = 22-23", seed_sum_range_filter(16, 25)),
-        ("07. Seed Sum = 24-25", seed_sum_range_filter(19, 25)),
-        ("08. Seed Sum >= 26", seed_sum_range_filter(20, 28)),
-        ("09. Seed Contains 2 -> Winner Must Contain 5 or 4", must_contain_filter("54")),
-        ("10. Seed Contains 1 -> Winner Must Contain 2, 3, or 4", must_contain_filter("234")),
-        ("11. Seed Contains 0 -> Winner Must Contain 1, 2, or 3", must_contain_filter("123")),
-    ]
-
     fns = []
-    for name, fn in ranked:
-        match_found = False
-        norm_ranked = normalize_name(name)
-        for pf in parsed_filters:
-            norm_pf = normalize_name(pf['name'])
-            if norm_pf in norm_ranked or norm_ranked in norm_pf:
-                fns.append({"name": name, "fn": fn, "descr": pf.get('logic', '')})
-                match_found = True
-                break
-        if not match_found:
-            st.warning(f"No function defined for manual filter: '{name}'")
+    for pf in parsed_filters:
+        raw_name = pf['name'].strip()
+        logic = pf.get('logic', '')
+        action = pf.get('action', '')
+        norm = normalize_name(raw_name)
+
+        # Match seed sum filters
+        m_range = re.search(r'seed sum\s*=\s*(\d+)\s*-\s*(\d+)', norm)
+        m_le = re.search(r'seed sum\s*<=\s*(\d+)', norm)
+        m_ge = re.search(r'seed sum\s*>=\s*(\d+)', norm)
+
+        if m_range or m_le or m_ge:
+            seed_min = int(m_range.group(1)) if m_range else (int(m_ge.group(1)) if m_ge else None)
+            seed_max = int(m_range.group(2)) if m_range else (int(m_le.group(1)) if m_le else None)
+
+            low, high = None, None
+            m_action = re.search(r'between\s*(\d+)\s*(?:-|and)\s*(\d+)', action)
+            if m_action:
+                low, high = int(m_action.group(1)), int(m_action.group(2))
+            elif 'sum <=' in action or 'sum ≤' in action:
+                high = int(re.search(r'sum\s*(?:<=|≤)\s*(\d+)', action).group(1))
+            elif 'sum >=' in action or 'sum ≥' in action:
+                low = int(re.search(r'sum\s*(?:>=|≥)\s*(\d+)', action).group(1))
+
+            def dynamic_range_filter(seed_sum_min, seed_sum_max, low, high):
+                def fn(combos, seed=None, seed_sum=None):
+                    if seed_sum is None:
+                        return combos, []
+                    if seed_sum_min and seed_sum < seed_sum_min:
+                        return combos, []
+                    if seed_sum_max and seed_sum > seed_sum_max:
+                        return combos, []
+                    kept, removed = [], []
+                    for c in combos:
+                        s = sum(int(d) for d in c)
+                        (kept if (low or 0) <= s <= (high or 99) else removed).append(c)
+                    return kept, removed
+                return fn
+
+            fns.append({"name": raw_name, "fn": dynamic_range_filter(seed_min, seed_max, low, high), "descr": logic})
+            continue
+
+        # Match Seed Contains → Winner Must Contain
+        m_seed = re.search(r'seed contains\s*(\d)', norm)
+        m_req = re.findall(r'winner must contain\s*([\d\sorand]+)', norm)
+        if m_seed and m_req:
+            sd = m_seed.group(1)
+            req_digits = re.findall(r'\d', ' '.join(m_req))
+            def must_contain_logic(sd, reqs):
+                def fn(combos, seed=None, **kwargs):
+                    if seed and sd in seed:
+                        kept, removed = [], []
+                        for c in combos:
+                            (kept if any(d in c for d in reqs) else removed).append(c)
+                        return kept, removed
+                    return combos, []
+                return fn
+            fns.append({"name": raw_name, "fn": must_contain_logic(sd, req_digits), "descr": logic})
+            continue
+
+        st.warning(f"No function defined for manual filter: '{raw_name}'")
     return fns
 
 # ==============================
