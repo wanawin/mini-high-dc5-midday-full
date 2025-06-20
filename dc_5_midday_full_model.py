@@ -120,17 +120,36 @@ def load_manual_filters_from_file(uploaded_file=None,
         st.info("No manual filters loaded. Please upload a valid TXT or CSV file or place manual_filters_full.txt in app directory or /mnt/data.")
         return []
     # Split into raw lines
-    for line in content.splitlines():
-        raw_lines.append(line)
+    raw_lines = content.splitlines()
     # Show raw preview for debugging
     st.text_area("Raw manual filter lines", value="\n".join(raw_lines[:50]), height=200)
 
-    # Process each non-empty normalized line as separate filter
+    # Group lines into blocks separated by blank lines
+    blocks = []
+    current_block = []
     for line in raw_lines:
-        nt = normalize(line)
-        if nt:
-            filters.append(nt)
-    st.write(f"Loaded {len(filters)} manual filter entries (each non-empty line)")
+        if line.strip():
+            current_block.append(line)
+        else:
+            if current_block:
+                blocks.append(current_block)
+                current_block = []
+    if current_block:
+        blocks.append(current_block)
+
+    # Process each block into one filter text
+    for block in blocks:
+        normed = []
+        for line in block:
+            nt = normalize(line)
+            if nt:
+                normed.append(nt)
+        if normed:
+            filter_text = " ".join(normed)
+            filters.append(filter_text)
+
+    st.text_area("Preview grouped filters", value="\n\n".join(filters[:20]), height=200)
+    st.write(f"Loaded {len(filters)} manual filter entries (grouped from file)")
     return filters
 
 # ==============================
@@ -188,7 +207,7 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
         if '2' in seed_str:
             if not any(d in combo_str for d in ['5','4']):
                 return True
-    # Additional filter logic can be added here parsing filter_text patterns
+    # Extend logic parsing as needed
     return False
 
 # ==============================
@@ -218,7 +237,7 @@ due_digits = [d for d in st.sidebar.text_input("Due digits (comma-separated):").
 method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"]) 
 enable_trap = st.sidebar.checkbox("Enable Trap V3 Ranking")
 # File uploader for manual filters
-uploaded = st.sidebar.file_uploader("Upload manual filters file (CSV or TXT)", type=['csv','txt'])
+uploaded = st.sidebar.file_uploader("Upload manual filters file (TXT, degrouped list)", type=['txt','csv'])
 
 # Load manual filters
 manual_filters_list = []
@@ -258,7 +277,9 @@ for idx, (filt, static_count) in enumerate(ranking_sorted):
     col1, col2 = st.columns([0.85, 0.15])
     key_cb = f"filter_cb_{idx}"
     key_help = f"help_{idx}"
-    checkbox_label = f"{filt} — would eliminate {static_count} combos"
+    # Short label: use first sentence or truncate
+    label = filt.split('Logic:')[0].strip() if 'Logic:' in filt else (filt if len(filt) < 60 else filt[:57] + '...')
+    checkbox_label = f"{label} — would eliminate {static_count} combos"
     checked = col1.checkbox(checkbox_label, key=key_cb)
     if col2.button("?", key=key_help):
         elim = len([c for c in session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
