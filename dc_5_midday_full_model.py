@@ -53,7 +53,6 @@ def core_filters(combo, seed, previous_draw=None):
     return False
 
 # Manual filter definitions (static, ranked externally)
-# TODO: Replace the list below with your finalized manual filters ordered least to most aggressive.
 manual_filters_list = [
     "Cold Digit Trap — Requires at least 1 digit from the 4 coldest digits.",
     "Mirror Count = 0 — Eliminate combos that do not contain any mirror digit from the seed.",
@@ -143,13 +142,11 @@ for filt, count in ranking_sorted:
     col1, col2 = st.columns([0.9, 0.1])
     checked = col1.checkbox(f"{filt} — eliminates {count} combos", key=filt)
     if col2.button("?", key=f"help_{filt}"):
-        st.info(f"Filter: {filt}
-Eliminates {count} combinations in this session")
+        st.info(f"Filter: {filt}\nEliminates {count} combinations in this session")
     if checked:
         selected_manual.append(filt)
 
 # --- Run Prediction ---
-if st.sidebar.button("Run Prediction"):
 if st.sidebar.button("Run Prediction"):
     combos = combos_initial
     st.write(f"Total generated combos: {len(combos)}")
@@ -162,22 +159,6 @@ if st.sidebar.button("Run Prediction"):
         eliminated = [c for c in remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
         st.write(f"**{filt}** eliminated {len(eliminated)} combos")
         if st.sidebar.checkbox(f"Show eliminated combos for: {filt}"):
-            st.write(eliminated)
-        remaining = [c for c in remaining if c not in eliminated]
-        st.write(f"Remaining combos: {len(remaining)}")
-    st.write("### Final Predictive Pool")
-    st.dataframe(remaining)("Run Prediction"):
-    combos = generate_combinations(seed, method)
-    st.write(f"Total generated combos: {len(combos)}")
-    # Core filters
-    filtered = [c for c in combos if not core_filters(c, seed)]
-    st.write(f"After core filters: {len(filtered)} combos remain")
-    # Manual filters
-    remaining = filtered.copy()
-    for filt in selected_manual:
-        eliminated = [c for c in remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
-        st.write(f"**{filt}** eliminated {len(eliminated)} combos")
-        if st.checkbox(f"Show eliminated combos for: {filt}"):
             st.write(eliminated)
         remaining = [c for c in remaining if c not in eliminated]
         st.write(f"Remaining combos: {len(remaining)}")
