@@ -2,6 +2,7 @@ import streamlit as st
 from itertools import product, combinations
 import os
 import re
+import unicodedata
 
 # ==============================
 # BOOT CHECKPOINT
@@ -31,6 +32,75 @@ def parse_manual_filters_txt(raw_text: str):
     return entries
 
 # ==============================
+# Helper: Normalize Names
+# ==============================
+def normalize_name(raw_name: str) -> str:
+    s = unicodedata.normalize('NFKC', raw_name)
+    s = s.replace('≥', '>=').replace('≤', '<=')
+    s = s.replace('→', '->')
+    s = s.replace('–', '-').replace('—', '-')
+    s = re.sub(r'\s+', ' ', s)
+    return s.strip()
+
+# ==============================
+# Real Filter Functions
+# ==============================
+def seed_sum_range_filter(min_sum, max_sum):
+    def filter_fn(combos, seed=None, seed_sum=None):
+        kept = []
+        removed = []
+        for combo in combos:
+            s = sum(int(d) for d in combo)
+            if min_sum <= s <= max_sum:
+                kept.append(combo)
+            else:
+                removed.append(combo)
+        return kept, removed
+    return filter_fn
+
+def must_contain_filter(required_digits):
+    def filter_fn(combos, seed=None, seed_sum=None):
+        kept = []
+        removed = []
+        for combo in combos:
+            if any(d in combo for d in required_digits):
+                kept.append(combo)
+            else:
+                removed.append(combo)
+        return kept, removed
+    return filter_fn
+
+# ==============================
+# Manual Filter Builder
+# ==============================
+def build_filter_functions(parsed_filters):
+    fns = []
+    for pf in parsed_filters:
+        raw_name = pf['name'].strip()
+        logic = pf.get('logic','')
+        action = pf.get('action','')
+        name_norm = normalize_name(raw_name)
+        lower = name_norm.lower()
+
+        if "seed sum <= 12" in lower:
+            fn = seed_sum_range_filter(12, 25)
+            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
+            continue
+
+        if "seed sum = 13-15" in lower:
+            fn = seed_sum_range_filter(14, 22)
+            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
+            continue
+
+        if "seed contains 1" in lower and "winner must contain" in lower:
+            fn = must_contain_filter("234")
+            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
+            continue
+
+        st.warning(f"No function defined for manual filter: '{raw_name}'")
+    return fns
+
+# ==============================
 # Load Manual Filters
 # ==============================
 manual_txt_path = "manual_filters_full.txt"
@@ -41,8 +111,6 @@ if os.path.exists(manual_txt_path):
     st.text_area("Raw manual filter lines", raw_txt, height=200)
     st.write(f"Parsed {len(parsed)} manual filter blocks")
 
-    # Import dynamic builder
-    from dc5_manual_filter_ranked_list import build_filter_functions
     filter_functions = build_filter_functions(parsed)
     st.write("Preview manual filter names", [f['name'] for f in filter_functions])
 
