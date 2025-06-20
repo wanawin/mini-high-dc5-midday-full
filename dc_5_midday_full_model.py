@@ -37,6 +37,8 @@ def build_filter_functions(parsed_filters):
         logic = pf['logic']
         action = pf['action']
         lower_name = name.lower()
+
+        # Seed Sum Range Filters
         m_seed = re.search(r'seed sum\s*[\u2264<=]?\s*(\d+)(?:[\-\u2013](\d+))?', lower_name)
         if m_seed:
             if m_seed.group(2):
@@ -76,6 +78,23 @@ def build_filter_functions(parsed_filters):
             fn = make_conditional_sum_range_filter(seed_sum_min=smin, seed_sum_max=smax, low=low, high=high)
             fns.append({'name': name, 'fn': fn, 'descr': logic})
             continue
+
+        # Seed Contains 2 → Winner Must Contain 5 or 4
+        if "seed contains 2" in lower_name and "5 or 4" in action:
+            def must_have_5_or_4(combo_list, seed=None, **kwargs):
+                if seed and '2' in str(seed):
+                    keep, removed = [], []
+                    for c in combo_list:
+                        if '5' in c or '4' in c:
+                            keep.append(c)
+                        else:
+                            removed.append(c)
+                    return keep, removed
+                return combo_list, []
+
+            fns.append({'name': name, 'fn': must_have_5_or_4, 'descr': logic})
+            continue
+
         st.warning(f"No function defined for manual filter: '{name}'")
     return fns
 
