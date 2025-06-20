@@ -46,6 +46,7 @@ def generate_combinations(seed, method="2-digit pair"):
                 combo = ''.join(sorted(d + ''.join(p)))
                 combos.add(combo)
     else:
+        # generate unique sorted pairs from seed digits
         pairs = set(''.join(sorted((seed_str[i], seed_str[j])))
                     for i in range(len(seed_str)) for j in range(i+1, len(seed_str)))
         for pair in pairs:
@@ -75,7 +76,7 @@ def load_manual_filters_from_file(uploaded_file=None,
                                   filepath_txt="manual_filters_full.txt",
                                   filepath_csv="DC5_Midday_Filter_List__With_Descriptions_.csv"):
     raw_lines = []
-    filters = []
+    filter_blocks = []
     def normalize(text):
         text = text.strip()
         if not text:
@@ -124,14 +125,27 @@ def load_manual_filters_from_file(uploaded_file=None,
     # Show raw preview for debugging
     st.text_area("Raw manual filter lines", value="\n".join(raw_lines[:50]), height=200)
 
-    # Process each non-empty normalized line as individual filter
+    # Group into blocks separated by blank lines
+    current_block = []
     for line in raw_lines:
-        nt = normalize(line)
-        if nt:
-            filters.append(nt)
-    st.write(f"Loaded {len(filters)} manual filter entries (each line as filter)")
-    st.text_area("Preview filters", value="\n".join(filters[:50]), height=200)
-    return filters
+        stripped = line.strip()
+        if stripped:
+            nt = normalize(line)
+            if nt:
+                current_block.append(nt)
+        else:
+            if current_block:
+                block_text = " ".join(current_block)
+                filter_blocks.append(block_text)
+                current_block = []
+    # catch last block
+    if current_block:
+        block_text = " ".join(current_block)
+        filter_blocks.append(block_text)
+
+    st.write(f"Loaded {len(filter_blocks)} manual filter entries (blocks from file)")
+    st.text_area("Preview manual filter blocks", value="\n\n".join(filter_blocks[:20]), height=300)
+    return filter_blocks
 
 # ==============================
 # Helper: implement each filter's logic
@@ -142,26 +156,88 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     total = sum(int(d) for d in combo_str)
     seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
-    # Example parsing; extend based on actual normalized lines
-    # Seed Sum rules
-    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft:
+
+    # Example Seed Sum rules
+    # Parse numeric bounds from action if present
+    def parse_bounds(ft, default_low, default_high):
+        m = re.search(r'sum\s*<\s*(\d+)\s*or\s*>\s*(\d+)', ft)
+        if m:
+            try:
+                low = int(m.group(1)); high = int(m.group(2))
+                return low, high
+            except:
+                return default_low, default_high
+        return default_low, default_high
+
+    # Seed Sum ≤12
+    if re.search(r'seed sum\s*[≤<=]\s*12', ft):
         if seed_sum <= 12:
-            low, high = 12, 25
+            low, high = parse_bounds(ft, 12, 25)
             if total < low or total > high:
                 return True
-    if 'seed sum = 13-15' in ft or 'seed sum = 13–15' in ft:
+    # Seed Sum = 13-15
+    if re.search(r'seed sum\s*[=]\s*13[\-–]15', ft):
         if 13 <= seed_sum <= 15:
-            low, high = 14, 22
+            low, high = parse_bounds(ft, 14, 22)
             if total < low or total > high:
                 return True
-    # ... add other seed sum rules similarly
-    # Seed Contains logic example
-    if 'seed contains 2' in ft:
-        if '2' in seed_str:
-            # example action: adjust condition as per actual line
-            if total <  (0): # placeholder, implement actual logic
+    # Seed Sum = 16
+    if re.search(r'seed sum\s*[=]\s*16\b', ft):
+        if seed_sum == 16:
+            low, high = parse_bounds(ft, 12, 20)
+            if total < low or total > high:
                 return True
-    # Add parsing for other manual filters as needed
+    # Seed Sum = 17-18
+    if re.search(r'seed sum\s*[=]\s*17[\-–]18', ft):
+        if 17 <= seed_sum <= 18:
+            low, high = parse_bounds(ft, 11, 26)
+            if total < low or total > high:
+                return True
+    # Seed Sum = 19-21
+    if re.search(r'seed sum\s*[=]\s*19[\-–]21', ft):
+        if 19 <= seed_sum <= 21:
+            low, high = parse_bounds(ft, 14, 24)
+            if total < low or total > high:
+                return True
+    # Seed Sum = 22-23
+    if re.search(r'seed sum\s*[=]\s*22[\-–]23', ft):
+        if 22 <= seed_sum <= 23:
+            low, high = parse_bounds(ft, 16, 25)
+            if total < low or total > high:
+                return True
+    # Seed Sum = 24-25
+    if re.search(r'seed sum\s*[=]\s*24[\-–]25', ft):
+        if 24 <= seed_sum <= 25:
+            low, high = parse_bounds(ft, 19, 25)
+            if total < low or total > high:
+                return True
+    # Seed Sum ≥26
+    if re.search(r'seed sum\s*[≥>=]\s*26', ft):
+        if seed_sum >= 26:
+            low, high = parse_bounds(ft, 20, 28)
+            if total < low or total > high:
+                return True
+
+    # Example: Seed Contains rules
+    # e.g., "seed contains 2 → winner must contain 4 or 5"
+    # Attempt to parse: look for "seed contains X" and "must contain" pattern
+    m_sc = re.search(r'seed contains\s*(\d)', ft)
+    if m_sc:
+        d = m_sc.group(1)
+        if d in seed_str:
+            # look for "must contain" digits after arrow or text
+            m_must = re.search(r'must contain[^\d]*(\d)(?:[^\d]+(\d))?', ft)
+            if m_must:
+                required = set()
+                required.add(m_must.group(1))
+                if m_must.group(2):
+                    required.add(m_must.group(2))
+                # if combo does not contain any required digit, eliminate
+                if not any(r in combo_str for r in required):
+                    return True
+    # Further filters (mirror, digit traps, etc.) need parsing similarly based on normalized filter_text
+    # TODO: implement additional logic parsing for other filter types
+
     return False
 
 # ==============================
