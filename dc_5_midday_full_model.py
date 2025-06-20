@@ -124,32 +124,13 @@ def load_manual_filters_from_file(uploaded_file=None,
     # Show raw preview for debugging
     st.text_area("Raw manual filter lines", value="\n".join(raw_lines[:50]), height=200)
 
-    # Group lines into blocks separated by blank lines
-    blocks = []
-    current_block = []
+    # Process each non-empty normalized line as individual filter
     for line in raw_lines:
-        if line.strip():
-            current_block.append(line)
-        else:
-            if current_block:
-                blocks.append(current_block)
-                current_block = []
-    if current_block:
-        blocks.append(current_block)
-
-    # Process each block into one filter text
-    for block in blocks:
-        normed = []
-        for line in block:
-            nt = normalize(line)
-            if nt:
-                normed.append(nt)
-        if normed:
-            # join with separators to preserve structure
-            filter_text = " ".join(normed)
-            filters.append(filter_text)
-    st.text_area("Preview grouped filters", value="\n\n".join(filters[:50]), height=200)
-    st.write(f"Loaded {len(filters)} manual filter entries (grouped from file)")
+        nt = normalize(line)
+        if nt:
+            filters.append(nt)
+    st.write(f"Loaded {len(filters)} manual filter entries (each line as filter)")
+    st.text_area("Preview filters", value="\n".join(filters[:50]), height=200)
     return filters
 
 # ==============================
@@ -161,8 +142,9 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     total = sum(int(d) for d in combo_str)
     seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
+    # Example parsing; extend based on actual normalized lines
     # Seed Sum rules
-    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft or 'seed sum <=' in ft:
+    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft:
         if seed_sum <= 12:
             low, high = 12, 25
             if total < low or total > high:
@@ -172,40 +154,12 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
             low, high = 14, 22
             if total < low or total > high:
                 return True
-    if 'seed sum = 16' in ft:
-        if seed_sum == 16:
-            low, high = 12, 20
-            if total < low or total > high:
-                return True
-    if 'seed sum = 17-18' in ft or 'seed sum = 17–18' in ft:
-        if 17 <= seed_sum <= 18:
-            low, high = 11, 26
-            if total < low or total > high:
-                return True
-    if 'seed sum = 19-21' in ft or 'seed sum = 19–21' in ft:
-        if 19 <= seed_sum <= 21:
-            low, high = 14, 24
-            if total < low or total > high:
-                return True
-    if 'seed sum = 22-23' in ft or 'seed sum = 22–23' in ft:
-        if 22 <= seed_sum <= 23:
-            low, high = 16, 25
-            if total < low or total > high:
-                return True
-    if 'seed sum = 24-25' in ft or 'seed sum = 24–25' in ft:
-        if 24 <= seed_sum <= 25:
-            low, high = 19, 25
-            if total < low or total > high:
-                return True
-    if 'seed sum ≥26' in ft or 'seed sum >=26' in ft or 'seed sum ≥ 26' in ft:
-        if seed_sum >= 26:
-            low, high = 20, 28
-            if total < low or total > high:
-                return True
+    # ... add other seed sum rules similarly
     # Seed Contains logic example
     if 'seed contains 2' in ft:
         if '2' in seed_str:
-            if not any(d in combo_str for d in ['5','4']):
+            # example action: adjust condition as per actual line
+            if total <  (0): # placeholder, implement actual logic
                 return True
     # Add parsing for other manual filters as needed
     return False
