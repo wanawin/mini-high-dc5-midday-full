@@ -31,7 +31,6 @@ def digit_spread(combo):
     return digits[-1] - digits[0]
 
 def mirror_digits(combo):
-    # combo may be string of digits
     return {str(9 - int(d)) for d in combo}
 
 # ==============================
@@ -62,10 +61,8 @@ def primary_percentile_pass(combo):
     return True
 
 def core_filters(combo, seed, method="2-digit pair"):
-    # Return True if combo should be excluded
     if not primary_percentile_pass(combo):
         return True
-    # Only include combos generated from seed
     seed_combos = set(generate_combinations(seed, method=method))
     if combo not in seed_combos:
         return True
@@ -82,13 +79,11 @@ def load_manual_filters_from_file(uploaded_file=None,
         text = text.strip()
         if not text:
             return None
-        # Normalize dashes
         text = text.replace('—', '-').replace('–', '-')
-        # Remove leading numbering like "1." or "42)"
         text = re.sub(r'^[0-9]+[\.)]?\s*', '', text)
         return text
 
-    # Debug: list available files in current and /mnt/data
+    # Debug: list available files
     try:
         cwd_files = os.listdir('.')
         st.debug = getattr(st, 'debug', st.write)
@@ -98,11 +93,12 @@ def load_manual_filters_from_file(uploaded_file=None,
     except Exception:
         pass
 
-    # If uploader provided
+    # If user uploaded a file:
     if uploaded_file is not None:
         try:
             name = uploaded_file.name.lower()
-            content = uploaded_file.getvalue().decode('utf-8')
+            raw = uploaded_file.getvalue().decode('utf-8', errors='ignore')
+            # CSV branch
             if name.endswith('.csv'):
                 df = pd.read_csv(uploaded_file)
                 col_candidates = [c for c in df.columns if 'filter' in c.lower() or 'name' in c.lower()]
@@ -111,10 +107,11 @@ def load_manual_filters_from_file(uploaded_file=None,
                         nt = normalize(text)
                         if nt:
                             filters.append(nt)
-                    st.write(f"Loaded {len(filters)} manual filters from uploaded CSV")
-                    return filters
+                st.write(f"Loaded {len(filters)} manual filters from uploaded CSV")
+                return filters
             else:
-                for line in content.splitlines():
+                # TXT branch: split lines
+                for line in raw.splitlines():
                     nt = normalize(line)
                     if nt:
                         filters.append(nt)
@@ -122,7 +119,7 @@ def load_manual_filters_from_file(uploaded_file=None,
                 return filters
         except Exception as e:
             st.warning(f"Failed loading uploaded manual filters: {e}")
-    # Try CSV or TXT on disk: check cwd, app root, /mnt/data
+    # Try CSV or TXT on disk
     paths_to_try = [filepath_csv, filepath_txt,
                     os.path.join(os.getcwd(), filepath_txt),
                     f"/mnt/data/{filepath_txt}", f"/mnt/data/{filepath_csv}"]
@@ -140,32 +137,15 @@ def load_manual_filters_from_file(uploaded_file=None,
                         st.write(f"Loaded {len(filters)} manual filters from {path}")
                         return filters
                 else:
-                    # Read lines and normalize
-                    lines = []
-                    with open(path, "r", encoding='utf-8') as f:
+                    with open(path, "r", encoding='utf-8', errors='ignore') as f:
                         for raw in f:
                             nt = normalize(raw)
                             if nt:
-                                lines.append(nt)
-                    # Merge blocks if needed
-                    merged = []
-                    i = 0
-                    while i < len(lines):
-                        block = [lines[i]]
-                        j = i+1
-                        # Combine up to 4 lines if contain ':' indicating logic/action
-                        while j < len(lines) and ':' in lines[j] and len(block) < 4:
-                            block.append(lines[j])
-                            j += 1
-                        merged.append(' - '.join(block))
-                        i = j
-                    final_filters = merged if merged else lines
-                    filters.extend(final_filters)
+                                filters.append(nt)
                     st.write(f"Loaded {len(filters)} manual filters from {path}")
                     return filters
         except Exception as e:
             st.warning(f"Failed loading manual filters from {path}: {e}")
-    # Fallback empty
     if not filters:
         st.info("No manual filters loaded. Please upload a valid TXT or CSV file or place manual_filters_full.txt in app directory or /mnt/data.")
     return filters
@@ -174,19 +154,18 @@ def load_manual_filters_from_file(uploaded_file=None,
 # Helper: implement each filter's logic
 # ==============================
 def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_digits):
-    combo_str = combo  # string
+    combo_str = combo
     seed_str = str(seed)
     total = sum(int(d) for d in combo_str)
     seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
-    # Example parsing for sum-based filters
+    # Example: seed sum ≤12
     if 'seed sum ≤12' in ft or 'seed sum <=12' in ft or 'seed sum ≤ 12' in ft:
         if seed_sum <= 12:
-            # Use defined range 12-25
             low, high = 12, 25
             if total < low or total > high:
                 return True
-    # Add more parsing for other filters here
+    # TODO: implement parsing for other filters
     return False
 
 # ==============================
@@ -229,7 +208,6 @@ if seed:
     combos_initial = generate_combinations(seed, method)
     filtered_initial = [c for c in combos_initial if not core_filters(c, seed, method=method)]
     current_pool = filtered_initial.copy()
-    # Initialize original pool in session state if changed
     if 'original_pool' not in st.session_state or st.session_state.get('seed') != seed or st.session_state.get('method') != method:
         st.session_state.original_pool = current_pool.copy()
         st.session_state.seed = seed
@@ -265,10 +243,9 @@ for idx, (filt, static_count) in enumerate(ranking_sorted):
     if checked and seed:
         session_pool = [c for c in session_pool if not apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
 
-# Update session state pool
 if seed:
     st.session_state.session_pool = session_pool
-    st.session_state.original_pool = st.session_state.original_pool  # keep original
+    st.session_state.original_pool = st.session_state.original_pool
 
 st.markdown(f"**Final Remaining combos after selected manual filters:** {len(st.session_state.session_pool) if seed else 0}")
 
