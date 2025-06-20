@@ -1,4 +1,3 @@
-
 import streamlit as st
 from itertools import product, combinations
 
@@ -33,6 +32,7 @@ def generate_combinations(seed, method="2-digit pair"):
     all_digits = '0123456789'
     combos = set()
     if method == "1-digit":
+        # For each seed digit, build 5-digit combos
         for d in seed:
             for p in product(all_digits, repeat=4):
                 combo = ''.join(sorted(d + ''.join(p)))
@@ -56,8 +56,9 @@ def primary_percentile_pass(combo):
     return True
 
 def core_filters(combo, seed):
+    # Returns True if combo should be filtered out by core logic
     if not primary_percentile_pass(combo):
-        return True  # filtered out
+        return True
     # Intersection: keep only those combos generated from seed
     seed_combos = set(generate_combinations(seed, method="2-digit pair"))
     if combo not in seed_combos:
@@ -67,9 +68,14 @@ def core_filters(combo, seed):
 # ==============================
 # Manual filter definitions (static, ranked externally)
 # ==============================
-# Example: manual_filters_list should be populated externally with strings or identifiers for each filter
+# Populate this list with all manual filter names in the desired order (least → most aggressive)
 manual_filters_list = [
-    # e.g., "Eliminate Triples", "Eliminate Quads", etc.
+    # Example entries; replace with full list:
+    "Eliminate Triples (any digit appears 3 times)",
+    "Eliminate Quads (any digit appears 4 times)",
+    "Eliminate Quints (same digit repeated)",
+    "Eliminate if 4 or more digits ≥8",
+    # Add the rest of your filters here...
 ]
 
 # ==============================
@@ -77,11 +83,16 @@ manual_filters_list = [
 # ==============================
 def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_digits):
     """Return True if combo should be eliminated by this manual filter."""
-    # TODO: implement logic for each filter_text case
-    # Example stub for illustration:
-    # if filter_text == "Eliminate Triples":
-    #     # if any digit appears 3 or more times in combo
-    #     return any(combo.count(d) >= 3 for d in set(combo))
+    # Example implementations; extend based on filter_text
+    if filter_text == "Eliminate Triples (any digit appears 3 times)":
+        return any(combo.count(d) >= 3 for d in set(combo))
+    if filter_text == "Eliminate Quads (any digit appears 4 times)":
+        return any(combo.count(d) >= 4 for d in set(combo))
+    if filter_text == "Eliminate Quints (same digit repeated)":
+        return any(combo.count(d) == 5 for d in set(combo))
+    if filter_text == "Eliminate if 4 or more digits ≥8":
+        return sum(1 for d in combo if int(d) >= 8) >= 4
+    # TODO: implement other filter cases
     return False
 
 # ==============================
@@ -95,7 +106,7 @@ seed = st.sidebar.text_input("5-digit seed:")
 hot_digits = [d for d in st.sidebar.text_input("Hot digits (comma-separated):").replace(' ', '').split(',') if d]
 cold_digits = [d for d in st.sidebar.text_input("Cold digits (comma-separated):").replace(' ', '').split(',') if d]
 due_digits = [d for d in st.sidebar.text_input("Due digits (comma-separated):").replace(' ', '').split(',') if d]
-method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"])
+method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"] )
 
 # Generate base pool after core filters
 combos_initial = generate_combinations(seed, method) if seed else []
@@ -107,9 +118,9 @@ docs_remaining = filtered_initial.copy()
 # Compute static elimination counts for ranking
 ranking = []
 for filt in manual_filters_list:
-    # Count how many combos would be eliminated if this filter applied to initial pool
     count_elim = len([c for c in filtered_initial if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
     ranking.append((filt, count_elim))
+# Sort by static elimination count
 ranking_sorted = sorted(ranking, key=lambda x: x[1])
 
 st.markdown("## Manual Filters (Least → Most Aggressive)")
@@ -135,6 +146,6 @@ for filt, static_count in ranking_sorted:
 st.markdown(f"**Final Remaining combos after selected manual filters:** {len(docs_remaining)}")
 
 # Note:
-# - Ensure manual_filters_list is populated with filter identifiers and apply_manual_filter is fully implemented.
-# - Fix indent and f-string syntax issues as shown above.
-# - The f-strings are properly closed and newlines are escaped.
+# - Populate manual_filters_list with all filter identifiers in your desired order.
+# - Extend apply_manual_filter with logic for each filter_text.
+# - Ensure proper indentation and closed f-strings.
