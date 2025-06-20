@@ -36,9 +36,9 @@ def parse_manual_filters_txt(raw_text: str):
 # ==============================
 def normalize_name(raw_name: str) -> str:
     s = unicodedata.normalize('NFKC', raw_name)
-    s = s.replace('≥', '>=').replace('≤', '<=')
-    s = s.replace('→', '->')
+    s = s.replace('≥', '>=').replace('≤', '<=').replace('→', '->')
     s = s.replace('–', '-').replace('—', '-')
+    s = s.replace(',', '').lower()
     s = re.sub(r'\s+', ' ', s)
     return s.strip()
 
@@ -67,26 +67,28 @@ def must_contain_filter(required_digits):
 # ==============================
 def build_filter_functions(parsed_filters):
     ranked = [
-        ("Seed Sum <= 12", seed_sum_range_filter(12, 25)),
-        ("Seed Sum = 13-15", seed_sum_range_filter(14, 22)),
-        ("Seed Sum = 16", seed_sum_range_filter(12, 20)),
-        ("Seed Sum = 17-18", seed_sum_range_filter(11, 26)),
-        ("Seed Sum = 19-21", seed_sum_range_filter(14, 24)),
-        ("Seed Sum = 22-23", seed_sum_range_filter(16, 25)),
-        ("Seed Sum = 24-25", seed_sum_range_filter(19, 25)),
-        ("Seed Sum >= 26", seed_sum_range_filter(20, 28)),
-        ("Seed Contains 2 -> Winner Must Contain 5 or 4", must_contain_filter("54")),
-        ("Seed Contains 1 -> Winner Must Contain 2, 3, or 4", must_contain_filter("234")),
-        ("Seed Contains 0 -> Winner Must Contain 1, 2, or 3", must_contain_filter("123")),
+        ("01. Seed Sum <= 12", seed_sum_range_filter(12, 25)),
+        ("02. Seed Sum = 13-15", seed_sum_range_filter(14, 22)),
+        ("03. Seed Sum = 16", seed_sum_range_filter(12, 20)),
+        ("04. Seed Sum = 17-18", seed_sum_range_filter(11, 26)),
+        ("05. Seed Sum = 19-21", seed_sum_range_filter(14, 24)),
+        ("06. Seed Sum = 22-23", seed_sum_range_filter(16, 25)),
+        ("07. Seed Sum = 24-25", seed_sum_range_filter(19, 25)),
+        ("08. Seed Sum >= 26", seed_sum_range_filter(20, 28)),
+        ("09. Seed Contains 2 -> Winner Must Contain 5 or 4", must_contain_filter("54")),
+        ("10. Seed Contains 1 -> Winner Must Contain 2, 3, or 4", must_contain_filter("234")),
+        ("11. Seed Contains 0 -> Winner Must Contain 1, 2, or 3", must_contain_filter("123")),
     ]
 
     fns = []
     for name, fn in ranked:
+        match_found = False
         for pf in parsed_filters:
-            if normalize_name(pf['name'].strip()).lower() == normalize_name(name).lower():
+            if normalize_name(pf['name']) in normalize_name(name):
                 fns.append({"name": name, "fn": fn, "descr": pf.get('logic', '')})
+                match_found = True
                 break
-        else:
+        if not match_found:
             st.warning(f"No function defined for manual filter: '{name}'")
     return fns
 
@@ -102,7 +104,6 @@ if os.path.exists(manual_txt_path):
     st.write(f"Parsed {len(parsed)} manual filter blocks")
 
     filter_functions = build_filter_functions(parsed)
-    st.write("Preview manual filter names", [f['name'] for f in filter_functions])
 
     seed_input = st.text_input("Enter Seed (5 digits, optional)")
     seed_sum = sum(int(d) for d in seed_input) if seed_input.isdigit() and len(seed_input) == 5 else None
