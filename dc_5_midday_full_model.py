@@ -2,6 +2,7 @@ import streamlit as st
 from itertools import product, combinations
 import os
 import pandas as pd
+import re
 
 # ==============================
 # Inline DC-5 Midday Model Functions
@@ -84,12 +85,10 @@ def load_manual_filters_from_file(uploaded_file=None,
         # Normalize dashes
         text = text.replace('—', '-').replace('–', '-')
         # Remove leading numbering like "1." or "42)"
-        import re
         text = re.sub(r'^[0-9]+[\.)]?\s*', '', text)
         return text
 
     # Debug: list available files in /mnt/data
-    data_files = []
     try:
         data_files = os.listdir('/mnt/data')
         st.debug = getattr(st, 'debug', st.write)
@@ -110,21 +109,24 @@ def load_manual_filters_from_file(uploaded_file=None,
                         nt = normalize(text)
                         if nt:
                             filters.append(nt)
+                    st.write(f"Loaded {len(filters)} manual filters from uploaded CSV")
                     return filters
             else:
                 for line in content.splitlines():
                     nt = normalize(line)
                     if nt:
                         filters.append(nt)
+                st.write(f"Loaded {len(filters)} manual filters from uploaded TXT")
                 return filters
         except Exception as e:
             st.warning(f"Failed loading uploaded manual filters: {e}")
-    # Try CSV or TXT on disk
-    # Also check /mnt/data path (Streamlit sandbox)
-    paths_to_try = [filepath_csv, filepath_txt, f"/mnt/data/{filepath_csv}", f"/mnt/data/{filepath_txt}", os.path.join(os.getcwd(), filepath_txt)]
+    # Try CSV or TXT on disk and /mnt/data
+    paths_to_try = [filepath_csv, filepath_txt,
+                    f"/mnt/data/{filepath_csv}", f"/mnt/data/{filepath_txt}",
+                    os.path.join(os.getcwd(), filepath_txt)]
     for path in paths_to_try:
-        if os.path.exists(path):
-            try:
+        try:
+            if os.path.exists(path):
                 if path.lower().endswith('.csv'):
                     df = pd.read_csv(path)
                     col_candidates = [c for c in df.columns if 'filter' in c.lower() or 'name' in c.lower()]
@@ -136,15 +138,33 @@ def load_manual_filters_from_file(uploaded_file=None,
                         st.write(f"Loaded {len(filters)} manual filters from {path}")
                         return filters
                 else:
+                    # Read and merge block definitions: combine contiguous non-empty lines into single entries if needed
+                    lines = []
                     with open(path, "r", encoding='utf-8') as f:
-                        for line in f:
-                            nt = normalize(line)
+                        for raw in f:
+                            nt = normalize(raw)
                             if nt:
-                                filters.append(nt)
+                                lines.append(nt)
+                    # If file uses blocks (Logic/Action lines), merge every 4 lines into one filter description
+                    merged = []
+                    i = 0
+                    while i < len(lines):
+                        # If pattern: 'Seed Sum...' or similar, detect block of up to 4 lines
+                        block = [lines[i]]
+                        # Look ahead for Logic/Action lines
+                        j = i+1
+                        while j < len(lines) and ':' in lines[j] and len(block) < 4:
+                            block.append(lines[j])
+                            j += 1
+                        merged.append(' — '.join(block))
+                        i = j
+                    # Fallback: if no merging, use lines directly
+                    final_filters = merged if merged else lines
+                    filters.extend(final_filters)
                     st.write(f"Loaded {len(filters)} manual filters from {path}")
                     return filters
-            except Exception as e:
-                st.warning(f"Failed loading manual filters from {path}: {e}")
+        except Exception as e:
+            st.warning(f"Failed loading manual filters from {path}: {e}")
     # Fallback empty
     if not filters:
         st.info("No manual filters loaded. Please upload a valid TXT or CSV file containing filter descriptions or ensure file exists in /mnt/data/manual_filters_full.txt.")
@@ -157,11 +177,20 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     combo_str = combo  # string
     seed_str = str(seed)
     total = sum(int(d) for d in combo_str)
+    seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
-    import re
-    # ... existing logic unchanged ...
-    # (retain all apply_manual_filter branches as before)
-    # If not matched, default: do not eliminate
+    # Example parsing for sum-based filters
+    # Seed Sum ≤12: Eliminate if sum <12 or >25 when seed sum ≤12
+    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft:
+        if seed_sum <= 12:
+            m = re.search(r'sum <(\d+)', ft)
+            m2 = re.search(r'sum >(\d+)', ft)
+            # Fallback hardcoded range 12-25
+            low, high = 12, 25
+            if total < low or total > high:
+                return True
+    # Additional filters to be implemented similarly: parse ranges, positions, mirror logic, etc.
+    # For any filter not yet implemented, default: do not eliminate
     return False
 
 # ==============================
@@ -204,13 +233,18 @@ if seed:
     combos_initial = generate_combinations(seed, method)
     filtered_initial = [c for c in combos_initial if not core_filters(c, seed, method=method)]
     current_pool = filtered_initial.copy()
+    # Initialize original pool in session state if changed
+    if 'original_pool' not in st.session_state or st.session_state.get('seed') != seed or st.session_state.get('method') != method:
+        st.session_state.original_pool = current_pool.copy()
+        st.session_state.seed = seed
+        st.session_state.method = method
 
-# Compute static elimination counts
+# Compute static elimination counts for UI
 ranking_sorted = []
 if seed and manual_filters_list:
     ranking = []
     for filt in manual_filters_list:
-        count_elim = len([c for c in current_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
+        count_elim = len([c for c in st.session_state.original_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
         ranking.append((filt, count_elim))
     ranking_sorted = sorted(ranking, key=lambda x: x[1])
 else:
@@ -218,15 +252,11 @@ else:
 
 st.markdown("## Manual Filters (Least → Most Aggressive)")
 
-# Use session state for pool persistence
-if 'session_pool' not in st.session_state:
-    st.session_state.session_pool = current_pool.copy() if seed else []
-if seed:
-    st.session_state.session_pool = current_pool.copy()
-
 if not manual_filters_list:
     st.info("No manual filters loaded. Upload a filter file or ensure manual_filters_full.txt is in /mnt/data.")
 
+# Compute session_pool by applying selected filters each run
+session_pool = st.session_state.get('original_pool', []).copy() if seed else []
 for idx, (filt, static_count) in enumerate(ranking_sorted):
     col1, col2 = st.columns([0.85, 0.15])
     key_cb = f"filter_cb_{idx}"
@@ -234,14 +264,17 @@ for idx, (filt, static_count) in enumerate(ranking_sorted):
     checkbox_label = f"{filt} — would eliminate {static_count} combos"
     checked = col1.checkbox(checkbox_label, key=key_cb)
     if col2.button("?", key=key_help):
-        st.info(f"Filter: {filt}\nSession elimination: {len([c for c in st.session_state.session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])} combos")
+        elim = len([c for c in session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
+        st.info(f"Filter: {filt}\nSession elimination: {elim} combos")
     if checked and seed:
-        to_remove = [c for c in st.session_state.session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
-        eliminated_count = len(to_remove)
-        st.session_state.session_pool = [c for c in st.session_state.session_pool if c not in to_remove]
-        col1.write(f"Eliminated {eliminated_count} combos; Remaining combos: {len(st.session_state.session_pool)}")
+        session_pool = [c for c in session_pool if not apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
 
-st.markdown(f"**Final Remaining combos after selected manual filters:** {len(st.session_state.session_pool)}")
+# Update session state pool
+if seed:
+    st.session_state.session_pool = session_pool
+    st.session_state.original_pool = st.session_state.original_pool  # keep original
+
+st.markdown(f"**Final Remaining combos after selected manual filters:** {len(st.session_state.session_pool) if seed else 0}")
 
 # Show remaining combos
 if seed:
@@ -252,6 +285,7 @@ if seed:
         else:
             st.write("No combinations remaining.")
 
+# Trap V3 Ranking
 if enable_trap and seed:
     st.markdown("## Trap V3 Ranking")
     ranked_list = rank_with_trap_v3(st.session_state.session_pool, seed)
