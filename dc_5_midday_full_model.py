@@ -9,7 +9,7 @@ import re
 # ... [rest of the code unchanged for brevity] ...
 
 # ==============================
-# Load manual filters from external file or upload (with crash guard)
+# Load manual filters from external file or upload (with grouped file skip logic)
 # ==============================
 def load_manual_filters_from_file(uploaded_file=None, filepath_txt="manual_filters_degrouped.txt"):
     content = None
@@ -23,6 +23,10 @@ def load_manual_filters_from_file(uploaded_file=None, filepath_txt="manual_filte
         paths_to_try = [filepath_txt, os.path.join(os.getcwd(), filepath_txt), f"/mnt/data/{filepath_txt}"]
         for path in paths_to_try:
             if os.path.exists(path):
+                # Auto-ignore grouped files
+                if "full" in os.path.basename(path).lower():
+                    st.info(f"Skipped grouped file: {path}")
+                    continue
                 try:
                     with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
