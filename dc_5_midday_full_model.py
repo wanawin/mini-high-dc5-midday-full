@@ -128,11 +128,12 @@ def load_manual_filters_from_file(uploaded_file=None,
     # Process lines into blocks: group by blank lines or header patterns
     blocks = []
     current = []
+    header_pattern = re.compile(r'^(Seed Sum|Seed Contains|Mirror Count|V-Trac|Hot Digits|Cold Digits|Type:|Logic:|Action:)', re.IGNORECASE)
     for line in raw_lines:
         nt = normalize(line)
         if nt:
-            # If line starts a new filter header (e.g., 'Seed Sum') and current has content, start new block
-            if re.match(r'^(Seed Sum|Seed Contains|Mirror Count|V-Trac|Hot Digits|Cold Digits)', nt, re.IGNORECASE) and current:
+            # If line starts a new filter header and current has content, start new block
+            if header_pattern.match(nt) and current:
                 blocks.append(current)
                 current = [nt]
             else:
@@ -160,8 +161,8 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     total = sum(int(d) for d in combo_str)
     seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
-    # Example: seed sum ≤12
-    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft or 'seed sum ≤ 12' in ft:
+    # Seed Sum rules
+    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft:
         if seed_sum <= 12:
             low, high = 12, 25
             if total < low or total > high:
@@ -201,8 +202,8 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
             low, high = 20, 28
             if total < low or total > high:
                 return True
-    # Example: Seed Contains 2 -> Winner Must Contain 5 or 4
-    if re.search(r'seed contains 2', ft):
+    # Example: Seed Contains logic
+    if 'seed contains 2' in ft:
         if '2' in seed_str:
             if not any(d in combo_str for d in ['5','4']):
                 return True
