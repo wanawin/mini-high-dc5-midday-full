@@ -1,0 +1,9 @@
+Seed Sum ≥26
+Type: Manual
+Logic: If seed sum is ≥26, only allow combinations with digit sum between 20 and 28.
+Action: Eliminate if sum <20 or >28
+
+Seed Contains 2 → Winner Must Contain 5 or 4
+Type: Manual
+Logic: If seed contains 2, only allow winners that contain digit 5 or 4.
+Action: Eliminate if combo contains no 5 or 4
