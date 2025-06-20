@@ -72,7 +72,7 @@ def core_filters(combo, seed, method="2-digit pair"):
     return False
 
 # ==============================
-# Load manual filters from external file
+# Load manual filters from external file or upload
 # ==============================
 def load_manual_filters_from_file(uploaded_file=None,
                                   filepath_txt="manual_filters_full.txt",
@@ -88,10 +88,12 @@ def load_manual_filters_from_file(uploaded_file=None,
         text = re.sub(r'^[0-9]+[\.)]?\s*', '', text)
         return text
 
-    # Debug: list available files in /mnt/data
+    # Debug: list available files in current and /mnt/data
     try:
-        data_files = os.listdir('/mnt/data')
+        cwd_files = os.listdir('.')
         st.debug = getattr(st, 'debug', st.write)
+        st.debug(f"Files in cwd: {cwd_files}")
+        data_files = os.listdir('/mnt/data') if os.path.exists('/mnt/data') else []
         st.debug(f"Files in /mnt/data: {data_files}")
     except Exception:
         pass
@@ -120,10 +122,10 @@ def load_manual_filters_from_file(uploaded_file=None,
                 return filters
         except Exception as e:
             st.warning(f"Failed loading uploaded manual filters: {e}")
-    # Try CSV or TXT on disk and /mnt/data
+    # Try CSV or TXT on disk: check cwd, app root, /mnt/data
     paths_to_try = [filepath_csv, filepath_txt,
-                    f"/mnt/data/{filepath_csv}", f"/mnt/data/{filepath_txt}",
-                    os.path.join(os.getcwd(), filepath_txt)]
+                    os.path.join(os.getcwd(), filepath_txt),
+                    f"/mnt/data/{filepath_txt}", f"/mnt/data/{filepath_csv}"]
     for path in paths_to_try:
         try:
             if os.path.exists(path):
@@ -138,27 +140,25 @@ def load_manual_filters_from_file(uploaded_file=None,
                         st.write(f"Loaded {len(filters)} manual filters from {path}")
                         return filters
                 else:
-                    # Read and merge block definitions: combine contiguous non-empty lines into single entries if needed
+                    # Read lines and normalize
                     lines = []
                     with open(path, "r", encoding='utf-8') as f:
                         for raw in f:
                             nt = normalize(raw)
                             if nt:
                                 lines.append(nt)
-                    # If file uses blocks (Logic/Action lines), merge every 4 lines into one filter description
+                    # Merge blocks if needed
                     merged = []
                     i = 0
                     while i < len(lines):
-                        # If pattern: 'Seed Sum...' or similar, detect block of up to 4 lines
                         block = [lines[i]]
-                        # Look ahead for Logic/Action lines
                         j = i+1
+                        # Combine up to 4 lines if contain ':' indicating logic/action
                         while j < len(lines) and ':' in lines[j] and len(block) < 4:
                             block.append(lines[j])
                             j += 1
-                        merged.append(' — '.join(block))
+                        merged.append(' - '.join(block))
                         i = j
-                    # Fallback: if no merging, use lines directly
                     final_filters = merged if merged else lines
                     filters.extend(final_filters)
                     st.write(f"Loaded {len(filters)} manual filters from {path}")
@@ -167,7 +167,7 @@ def load_manual_filters_from_file(uploaded_file=None,
             st.warning(f"Failed loading manual filters from {path}: {e}")
     # Fallback empty
     if not filters:
-        st.info("No manual filters loaded. Please upload a valid TXT or CSV file containing filter descriptions or ensure file exists in /mnt/data/manual_filters_full.txt.")
+        st.info("No manual filters loaded. Please upload a valid TXT or CSV file or place manual_filters_full.txt in app directory or /mnt/data.")
     return filters
 
 # ==============================
@@ -180,17 +180,13 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     seed_sum = calculate_seed_sum(seed_str)
     ft = filter_text.lower()
     # Example parsing for sum-based filters
-    # Seed Sum ≤12: Eliminate if sum <12 or >25 when seed sum ≤12
-    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft:
+    if 'seed sum ≤12' in ft or 'seed sum <=12' in ft or 'seed sum ≤ 12' in ft:
         if seed_sum <= 12:
-            m = re.search(r'sum <(\d+)', ft)
-            m2 = re.search(r'sum >(\d+)', ft)
-            # Fallback hardcoded range 12-25
+            # Use defined range 12-25
             low, high = 12, 25
             if total < low or total > high:
                 return True
-    # Additional filters to be implemented similarly: parse ranges, positions, mirror logic, etc.
-    # For any filter not yet implemented, default: do not eliminate
+    # Add more parsing for other filters here
     return False
 
 # ==============================
@@ -224,7 +220,7 @@ uploaded = st.sidebar.file_uploader("Upload manual filters file (CSV or TXT)", t
 
 # Load manual filters
 manual_filters_list = []
-if uploaded is not None or os.path.exists(f"/mnt/data/manual_filters_full.txt"):
+if uploaded is not None or os.path.exists("manual_filters_full.txt") or os.path.exists(f"/mnt/data/manual_filters_full.txt"):
     manual_filters_list = load_manual_filters_from_file(uploaded)
 
 # Generate base pool after core filters
@@ -253,7 +249,7 @@ else:
 st.markdown("## Manual Filters (Least → Most Aggressive)")
 
 if not manual_filters_list:
-    st.info("No manual filters loaded. Upload a filter file or ensure manual_filters_full.txt is in /mnt/data.")
+    st.info("No manual filters loaded. Upload a filter file or ensure manual_filters_full.txt is in app directory or /mnt/data.")
 
 # Compute session_pool by applying selected filters each run
 session_pool = st.session_state.get('original_pool', []).copy() if seed else []
