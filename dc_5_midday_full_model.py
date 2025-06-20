@@ -127,7 +127,7 @@ method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"])
 # Generate base pool after core filters for current seed
 combos_initial = generate_combinations(seed, method) if seed else []
 filtered_initial = [c for c in combos_initial if not core_filters(c, seed)] if seed else []
-# Compute elimination counts per filter
+# Compute elimination counts per filter (for display only)
 ranking = []
 for filt in manual_filters_list:
     eliminated = [c for c in filtered_initial if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
@@ -136,21 +136,22 @@ for filt in manual_filters_list:
 ranking_sorted = sorted(ranking, key=lambda x: x[1])
 
 st.markdown("## Manual Filters (Least → Most Aggressive)")
-selected_manual = []
-# Display each filter with checkbox and help button
+# Initialize remaining pool dynamically
+remaining = filtered_initial.copy()
+# Display each filter with checkbox, help button, and updated remaining count
 for filt, count in ranking_sorted:
     col1, col2 = st.columns([0.9, 0.1])
-    checked = col1.checkbox(f"{filt} — eliminates {count} combos", key=filt)
+    checked = col1.checkbox(f"{filt} — would eliminate {count} combos", key=filt)
     if col2.button("?", key=f"help_{filt}"):
-        st.info(f"Filter: {filt}\nEliminates {count} combinations in this session")
+        st.info(f"Filter: {filt}
+Eliminates {count} combinations in this session")
     if checked:
-        selected_manual.append(filt)
-
-# Compute and display remaining combos immediately after manual selection
-remaining_after_manual = filtered_initial.copy()
-for mf in selected_manual:
-    remaining_after_manual = [c for c in remaining_after_manual if not apply_manual_filter(mf, c, seed, hot_digits, cold_digits, due_digits)]
-st.markdown(f"**Remaining combos after selected manual filters:** {len(remaining_after_manual)}")
+        # Apply filter immediately to remaining pool
+        to_remove = [c for c in remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
+        remaining = [c for c in remaining if c not in to_remove]
+        col1.write(f"Remaining combos after '{filt}': {len(remaining)}")
+# Optional final summary
+st.markdown(f"**Final Remaining combos after selected filters:** {len(remaining)}")
 
 # --- Run Prediction ---
 if st.sidebar.button("Run Prediction"):
