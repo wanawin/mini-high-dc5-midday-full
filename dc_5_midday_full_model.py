@@ -37,7 +37,6 @@ def build_filter_functions(parsed_filters):
         logic = pf.get('logic','')
         action = pf.get('action','')
 
-        # Normalize Unicode symbols
         name_norm = (raw_name
                      .replace('≥', '>=')
                      .replace('≤', '<=')
@@ -46,7 +45,6 @@ def build_filter_functions(parsed_filters):
                      .replace('—', '-'))
         lower_name = name_norm.lower()
 
-        # Seed Sum Filters
         m_hyphen = re.search(r'seed sum\s*(\d+)\s*-\s*(\d+)', lower_name)
         m_le     = re.search(r'seed sum\s*<=\s*(\d+)', lower_name)
         m_ge     = re.search(r'seed sum\s*>=\s*(\d+)', lower_name)
@@ -105,7 +103,6 @@ def build_filter_functions(parsed_filters):
             fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
             continue
 
-        # Seed Contains -> Winner Must Contain
         if 'seed contains' in lower_name and 'winner must contain' in lower_name:
             m_seed_contains = re.search(r'seed contains\s*(\d+)', lower_name)
             m_winner_must = re.search(r'winner must contain\s*([\d,\s orand]+)', lower_name)
@@ -128,8 +125,6 @@ def build_filter_functions(parsed_filters):
                 fn = make_must_contain_filter(seed_digit, reqs)
                 fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
                 continue
-
-        st.warning(f"No function defined for manual filter: '{raw_name}'")
 
     return fns
 
@@ -157,7 +152,7 @@ def generate_combinations(seed, method="2-digit pair"):
     return sorted(combos)
 
 def core_filters(combo, seed, method="2-digit pair"):
-    return False  # placeholder for now, extend with logic later
+    return False
 
 # ==============================
 # Load manual filters with safe guards
@@ -218,6 +213,29 @@ try:
         filtered_initial = [c for c in combos_initial if not core_filters(c, seed, method=method)]
         st.session_state['original_pool'] = filtered_initial.copy()
         st.success(f"Generated {len(filtered_initial)} combos after core filters.")
+
+        if filter_entries:
+            st.divider()
+            st.subheader("🧰 Manual Filters")
+            seed_str = str(seed)
+            seed_sum = sum(int(d) for d in seed_str)
+            filter_names = [e['name'] for e in filter_entries]
+            selected = st.multiselect("Select manual filters to apply", filter_names, default=filter_names)
+            combo_list = filtered_initial.copy()
+            for entry in filter_entries:
+                name = entry['name']
+                fn = entry['fn']
+                if name not in selected:
+                    st.write(f"- ❎ {name}: skipped")
+                    continue
+                keep, removed = fn(combo_list, seed=seed, seed_sum=seed_sum)
+                with st.expander(f"🧹 {name} — removed {len(removed)}"):
+                    st.write(removed)
+                combo_list = keep
+            st.success(f"✅ Final pool after manual filters: {len(combo_list)} combinations")
+            st.session_state['final_pool'] = combo_list
+        else:
+            st.info("No manual filters were parsed or applied.")
     else:
         st.warning("Enter a seed to generate combos.")
 
