@@ -47,57 +47,47 @@ def normalize_name(raw_name: str) -> str:
 # ==============================
 def seed_sum_range_filter(min_sum, max_sum):
     def filter_fn(combos, seed=None, seed_sum=None):
-        kept = []
-        removed = []
+        kept, removed = [], []
         for combo in combos:
             s = sum(int(d) for d in combo)
-            if min_sum <= s <= max_sum:
-                kept.append(combo)
-            else:
-                removed.append(combo)
+            (kept if min_sum <= s <= max_sum else removed).append(combo)
         return kept, removed
     return filter_fn
 
 def must_contain_filter(required_digits):
     def filter_fn(combos, seed=None, seed_sum=None):
-        kept = []
-        removed = []
+        kept, removed = [], []
         for combo in combos:
-            if any(d in combo for d in required_digits):
-                kept.append(combo)
-            else:
-                removed.append(combo)
+            (kept if any(d in combo for d in required_digits) else removed).append(combo)
         return kept, removed
     return filter_fn
 
 # ==============================
-# Manual Filter Builder
+# Manual Filter Builder (Ranked)
 # ==============================
 def build_filter_functions(parsed_filters):
+    ranked = [
+        ("Seed Sum <= 12", seed_sum_range_filter(12, 25)),
+        ("Seed Sum = 13-15", seed_sum_range_filter(14, 22)),
+        ("Seed Sum = 16", seed_sum_range_filter(12, 20)),
+        ("Seed Sum = 17-18", seed_sum_range_filter(11, 26)),
+        ("Seed Sum = 19-21", seed_sum_range_filter(14, 24)),
+        ("Seed Sum = 22-23", seed_sum_range_filter(16, 25)),
+        ("Seed Sum = 24-25", seed_sum_range_filter(19, 25)),
+        ("Seed Sum >= 26", seed_sum_range_filter(20, 28)),
+        ("Seed Contains 2 -> Winner Must Contain 5 or 4", must_contain_filter("54")),
+        ("Seed Contains 1 -> Winner Must Contain 2, 3, or 4", must_contain_filter("234")),
+        ("Seed Contains 0 -> Winner Must Contain 1, 2, or 3", must_contain_filter("123")),
+    ]
+
     fns = []
-    for pf in parsed_filters:
-        raw_name = pf['name'].strip()
-        logic = pf.get('logic','')
-        action = pf.get('action','')
-        name_norm = normalize_name(raw_name)
-        lower = name_norm.lower()
-
-        if "seed sum <= 12" in lower:
-            fn = seed_sum_range_filter(12, 25)
-            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
-            continue
-
-        if "seed sum = 13-15" in lower:
-            fn = seed_sum_range_filter(14, 22)
-            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
-            continue
-
-        if "seed contains 1" in lower and "winner must contain" in lower:
-            fn = must_contain_filter("234")
-            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
-            continue
-
-        st.warning(f"No function defined for manual filter: '{raw_name}'")
+    for name, fn in ranked:
+        for pf in parsed_filters:
+            if normalize_name(pf['name'].strip()).lower() == normalize_name(name).lower():
+                fns.append({"name": name, "fn": fn, "descr": pf.get('logic', '')})
+                break
+        else:
+            st.warning(f"No function defined for manual filter: '{name}'")
     return fns
 
 # ==============================
