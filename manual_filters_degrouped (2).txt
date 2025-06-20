@@ -1,0 +1,29 @@
+Seed Sum ≥ 26
+Type: Seed-Based
+Logic: If the seed sum is 26 or higher
+Action: Eliminate combinations where the sum is < 20 or > 28
+
+Seed Sum = 17
+Type: Seed-Based
+Logic: If the seed sum is exactly 17
+Action: Eliminate combinations where the sum is < 11 or > 35
+
+Seed Sum = 18
+Type: Seed-Based
+Logic: If the seed sum is exactly 18
+Action: Eliminate combinations where the sum is < 13 or > 39
+
+Seed Sum = 19
+Type: Seed-Based
+Logic: If the seed sum is exactly 19
+Action: Eliminate combinations where the sum is < 13 or > 39
+
+Seed Contains 1 → Winner Must Contain 2 or 3 or 4
+Type: Dependency
+Logic: If the seed contains digit 1
+Action: Require the result to include 2 or 3 or 4
+
+Seed Contains 2 → Winner Must Contain 5 or 4
+Type: Dependency
+Logic: If the seed contains digit 2
+Action: Require the result to include 5 or 4
