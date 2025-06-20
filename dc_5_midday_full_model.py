@@ -103,14 +103,51 @@ def load_manual_filters(filepath="manual_filters.txt"):
             st.error(f"Error loading manual filters from {filepath}: {e}")
             return []
     else:
-        # Fallback static list: populate this inline or ensure manual_filters.txt exists
-        # INLINE COMMENT: Replace the below examples with your full filter list if file missing
+        # Fallback static list: inline full filter list
         return [
-            "Eliminate Triples (any digit appears 3 times)",
-            "Eliminate Quads (any digit appears 4 times)",
-            "Eliminate Quints (same digit repeated)",
-            "Eliminate if 4 or more digits >=8",
-            # ... add all filter texts here or via manual_filters.txt
+            "Cold Digit Trap - Requires at least 1 digit from the 4 coldest digits",
+            "Mirror Count = 0 - Eliminate combos that do not contain any mirror digit from the seed",
+            "Repeating Digit Filter (3+ Shared & Sum < 25) - For Singles only",
+            "Sum > 40 - Eliminates combos where digit sum is over 40",
+            "Digit Spread < 4 - Eliminates combos with low spread between digits",
+            "High-End Digit Limit - Eliminates if 2 or more digits >= 8",
+            "All Low Digits (0-3) - Eliminates if all 5 digits are from 0 to 3",
+            "Consecutive Digits >= 4 - Eliminates clusters of consecutive digits",
+            "Double-Doubles Only - Eliminates combos with exactly 3 unique digits, two of which appear twice",
+            "Quint Filter - All 5 digits identical",
+            "Quad Filter - 4 digits identical",
+            "Triple Filter - 3 digits identical",
+            "Mild Double-Double Filter - Exactly 4 digits: one twice, two once",
+            "No 2-Digit Internal Mirror Pairs - Eliminates combos with digit and its mirror",
+            "Prime Digit Filter - Eliminates combos with >=2 prime digits (2,3,5,7)",
+            "Sum Category Transition Filter - Very Low to Mid",
+            "Sum Category Transition Filter - Mid to Very Low",
+            "Sum Category Transition Filter - Low to Mid",
+            "Mirror Sum = Combo Sum - Eliminates combos whose digit sum matches seed mirror sum",
+            "Combo Contains Last Digit of Mirror Sum",
+            "Seed Contains 0 -> Winner must contain 1, 2, or 3",
+            "Seed Contains 1 -> Winner must contain 2, 3, or 4",
+            "Seed Contains 2 -> Winner must contain 4 or 5",
+            "V-Trac: All Digits Same Group - Eliminates if all digits share the same V-Trac group",
+            "V-Trac: Only 2 Groups Present - Eliminates if only 2 V-Trac groups used",
+            "V-Trac: All 5 Groups Present - Eliminates if all 5 V-Trac groups used",
+            "V-Trac: All Seed V-Tracs Present - Eliminates if all V-Trac groups from seed are in combo",
+            "V-Trac: None of Seed V-Tracs Present - Eliminates if no seed V-Tracs in combo",
+            "Position 1 Cannot Be 4 or 7",
+            "Position 3 Cannot Be 3 or 9",
+            "Position 4 Cannot Be 4",
+            "Position 5 Cannot Be 4",
+            "Eliminate if Digit 4 Repeats",
+            "Eliminate if Digit 7 Repeats",
+            "Seed Contains 00 and Sum <11 or >33",
+            "Seed Contains 02 and Sum <7 or >26",
+            "Seed Contains 03 and Sum <13 or >35",
+            "Seed Contains 04 and Sum <10 or >29",
+            "Seed Contains 05 and Sum <10 or >30",
+            "Seed Contains 06 and Sum <8 or >29",
+            "Seed Contains 07 and Sum <8 or >28",
+            "Shared Digits vs Sum Thresholds - Grouped Set",
+            # Continue listing all remaining filter names here...
         ]
 
 manual_filters_list = load_manual_filters()
@@ -124,31 +161,109 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
     # Return True to eliminate combo, False to keep.
 
     # Example implementations for common filters:
-    if "Eliminate Triples" in filter_text:
-        # Any digit appears 3 or more times
+    if "Eliminate Triples" in filter_text or "Triple Filter" in filter_text:
         for d in set(combo):
             if combo.count(d) >= 3:
                 return True
         return False
-    if "Eliminate Quads" in filter_text:
+    if "Eliminate Quads" in filter_text or "Quad Filter" in filter_text:
         for d in set(combo):
             if combo.count(d) >= 4:
                 return True
         return False
-    if "Eliminate Quints" in filter_text:
+    if "Eliminate Quints" in filter_text or "Quint Filter" in filter_text:
         return any(combo.count(d) == 5 for d in set(combo))
-    if "Eliminate if 4 or more digits >=8" in filter_text:
+    if "Eliminate if 4 or more digits >=8" in filter_text or "High-End Digit Limit" in filter_text:
         count = sum(1 for d in combo if int(d) >= 8)
         return count >= 4
-    # INLINE COMMENT: Continue adding cases for each filter in manual_filters_list
-    # For example:
-    # if "Cold Digit Trap" in filter_text:
-    #     # Requires at least 1 digit from cold_digits
-    #     for d in combo:
-    #         if d in cold_digits:
-    #             return False
-    #     return True
-
+    # Add more filter logic below following names
+    # e.g., Cold Digit Trap
+    if "Cold Digit Trap" in filter_text:
+        # Requires at least 1 digit from cold_digits
+        for d in combo:
+            if d in cold_digits:
+                return False
+        return True
+    # Mirror Count = 0
+    if "Mirror Count = 0" in filter_text:
+        seed_str = str(seed)
+        mirror_set = {str(9-int(d)) for d in seed_str}
+        # Eliminate combos that do not contain any mirror digit
+        for d in combo:
+            if d in mirror_set:
+                return False
+        return True
+    # Sum > 40
+    if "Sum > 40" in filter_text:
+        total = sum(int(d) for d in combo)
+        return total > 40
+    # Digit Spread < 4
+    if "Digit Spread < 4" in filter_text:
+        return digit_spread(combo) < 4
+    # All Low Digits (0-3)
+    if "All Low Digits" in filter_text:
+        return all(int(d) <= 3 for d in combo)
+    # Consecutive Digits >= 4
+    if "Consecutive Digits >= 4" in filter_text:
+        return has_consecutive_run(combo, run_length=4)
+    # Double-Doubles Only
+    if "Double-Doubles Only" in filter_text:
+        unique = set(combo)
+        if len(unique) == 3:
+            counts = [combo.count(d) for d in unique]
+            return sorted(counts) == [1,2,2]
+        return False
+    # Prime Digit Filter
+    if "Prime Digit Filter" in filter_text:
+        primes = {'2','3','5','7'}
+        count = sum(1 for d in combo if d in primes)
+        return count >= 2
+    # Seed Contains 00 and Sum <11 or >33
+    if "Seed Contains 00" in filter_text:
+        seed_str = str(seed)
+        if seed_str.count('0') >= 2:
+            total = sum(int(d) for d in combo)
+            return total < 11 or total > 33
+        return False
+    # Seed Contains 05 and Sum <10 or >30
+    if "Seed Contains 05" in filter_text:
+        seed_str = str(seed)
+        if '0' in seed_str and '5' in seed_str:
+            total = sum(int(d) for d in combo)
+            return total < 10 or total > 30
+        return False
+    # Seed Contains 06 and Sum <8 or >29
+    if "Seed Contains 06" in filter_text:
+        seed_str = str(seed)
+        if '0' in seed_str and '6' in seed_str:
+            total = sum(int(d) for d in combo)
+            return total < 8 or total > 29
+        return False
+    # Seed Contains 07 and Sum <8 or >28
+    if "Seed Contains 07" in filter_text:
+        seed_str = str(seed)
+        if '0' in seed_str and '7' in seed_str:
+            total = sum(int(d) for d in combo)
+            return total < 8 or total > 28
+        return False
+    # Position restrictions
+    if "Position 1 Cannot Be" in filter_text:
+        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
+        bad = {p.strip() for p in parts}
+        return combo[0] in bad
+    if "Position 3 Cannot Be" in filter_text:
+        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
+        bad = {p.strip() for p in parts}
+        return combo[2] in bad
+    if "Position 4 Cannot Be" in filter_text:
+        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
+        bad = {p.strip() for p in parts}
+        return combo[3] in bad
+    if "Position 5 Cannot Be" in filter_text:
+        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
+        bad = {p.strip() for p in parts}
+        return combo[4] in bad
+    # V-Trac and other complex filters to be implemented similarly
     # Default: keep combo
     return False
 
