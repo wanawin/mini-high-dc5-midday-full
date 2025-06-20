@@ -1,7 +1,6 @@
 import streamlit as st
 from itertools import product, combinations
 import os
-import pandas as pd
 import re
 
 # ==============================
@@ -30,8 +29,8 @@ def digit_spread(combo):
     digits = sorted(int(d) for d in combo)
     return digits[-1] - digits[0]
 
-def mirror_digits(combo):
-    return {str(9 - int(d)) for d in combo}
+def mirror_digits(seed):
+    return {str(9 - int(d)) for d in str(seed) if d.isdigit()}
 
 # ==============================
 # Generate combinations function
@@ -46,7 +45,6 @@ def generate_combinations(seed, method="2-digit pair"):
                 combo = ''.join(sorted(d + ''.join(p)))
                 combos.add(combo)
     else:
-        # generate unique sorted pairs from seed digits
         pairs = set(''.join(sorted((seed_str[i], seed_str[j])))
                     for i in range(len(seed_str)) for j in range(i+1, len(seed_str)))
         for pair in pairs:
@@ -59,6 +57,7 @@ def generate_combinations(seed, method="2-digit pair"):
 # Core filters: stub and seed intersection
 # ==============================
 def primary_percentile_pass(combo):
+    # Placeholder: implement actual percentile logic if available
     return True
 
 def core_filters(combo, seed, method="2-digit pair"):
@@ -70,150 +69,170 @@ def core_filters(combo, seed, method="2-digit pair"):
     return False
 
 # ==============================
+# Parse manual filters TXT
+# ==============================
+def parse_manual_filters_txt(raw_text: str):
+    entries = []
+    # Split into blocks separated by blank lines
+    blocks = [blk.strip() for blk in raw_text.strip().split("\n\n") if blk.strip()]
+    for blk in blocks:
+        lines = [ln.strip() for ln in blk.splitlines() if ln.strip()]
+        if len(lines) >= 4:
+            name = lines[0]
+            type_line = lines[1]
+            logic_line = lines[2]
+            action_line = lines[3]
+            typ = type_line.split(":", 1)[1].strip() if ":" in type_line else type_line
+            logic = logic_line.split(":", 1)[1].strip() if ":" in logic_line else logic_line
+            action = action_line.split(":", 1)[1].strip() if ":" in action_line else action_line
+            entries.append({"name": name, "type": typ, "logic": logic, "action": action})
+        else:
+            st.warning(f"Skipped manual-filter block (not 4 lines): {blk[:50]}...")
+    return entries
+
+# ==============================
+# Filter function factories
+# ==============================
+def make_conditional_sum_range_filter(seed_sum_min=None, seed_sum_max=None, low=None, high=None):
+    def filter_fn(combo_list, seed_sum=None, **kwargs):
+        if seed_sum is None:
+            return combo_list, []
+        if seed_sum_min is not None and seed_sum < seed_sum_min:
+            return combo_list, []
+        if seed_sum_max is not None and seed_sum > seed_sum_max:
+            return combo_list, []
+        keep, removed = [], []
+        for combo in combo_list:
+            s = sum(int(d) for d in combo)
+            if (low is not None and s < low) or (high is not None and s > high):
+                removed.append(combo)
+            else:
+                keep.append(combo)
+        return keep, removed
+    return filter_fn
+
+def make_mirror_zero_filter(mirror_set):
+    def filter_fn(combo_list, **kwargs):
+        if not mirror_set:
+            return combo_list, []
+        keep, removed = [], []
+        for combo in combo_list:
+            if any(d in mirror_set for d in combo):
+                keep.append(combo)
+            else:
+                removed.append(combo)
+        return keep, removed
+    return filter_fn
+
+def make_position_forbid_filter(pos, forbid_digits):
+    def filter_fn(combo_list, **kwargs):
+        keep, removed = [], []
+        for combo in combo_list:
+            if combo[pos-1] in forbid_digits:
+                removed.append(combo)
+            else:
+                keep.append(combo)
+        return keep, removed
+    return filter_fn
+
+# Extend with additional factories as needed per filter patterns
+
+# ==============================
+# Build filter functions from parsed entries
+# ==============================
+def build_filter_functions(parsed_filters):
+    fns = []
+    for pf in parsed_filters:
+        name = pf['name']
+        logic = pf['logic']
+        action = pf['action']
+        lower_name = name.lower()
+        # Seed Sum filters
+        m_seed = re.search(r'seed sum\s*[≤<=]?\s*(\d+)(?:[\-–](\d+))?', lower_name)
+        if m_seed:
+            if m_seed.group(2):
+                smin = int(m_seed.group(1)); smax = int(m_seed.group(2))
+            else:
+                val = int(m_seed.group(1))
+                if '≤' in name or '<=' in lower_name:
+                    smin = None; smax = val
+                else:
+                    smin = val; smax = val
+            lt = re.search(r'sum\s*<\s*(\d+)', action)
+            gt = re.search(r'>\s*(\d+)', action)
+            low = int(lt.group(1)) if lt else None
+            high = int(gt.group(1)) if gt else None
+            fn = make_conditional_sum_range_filter(seed_sum_min=smin, seed_sum_max=smax, low=low, high=high)
+            fns.append({'name': name, 'fn': fn, 'descr': logic})
+            continue
+        # Mirror Count = 0
+        if 'mirror count = 0' in lower_name:
+            fns.append({'name': name, 'factory': 'mirror_zero', 'descr': logic})
+            continue
+        # Position filters, e.g., "Position 3 cannot be 3 or 9"
+        m_pos = re.search(r'position\s*(\d+)\s*cannot be\s*([0-9](?:\s*or\s*[0-9])*)', lower_name)
+        if m_pos:
+            pos = int(m_pos.group(1))
+            digs = re.findall(r'\d', m_pos.group(2))
+            fns.append({'name': name, 'factory': ('position_forbid', pos, digs), 'descr': logic})
+            continue
+        # Add more patterns: e.g., high-end digit limit, consecutive, repeating, etc.
+        st.warning(f"No function defined for manual filter: '{name}'")
+    return fns
+
+# ==============================
 # Load manual filters from external file or upload
 # ==============================
-def load_manual_filters_from_file(uploaded_file=None,
-                                  filepath_txt="manual_filters_full.txt",
-                                  filepath_csv="DC5_Midday_Filter_List__With_Descriptions_.csv"):
-    raw_lines = []
-    filter_entries = []
-    def normalize(text):
-        text = text.strip()
-        if not text:
-            return None
-        # unify hyphens/dashes
-        text = text.replace('—', '-').replace('–', '-')
-        # remove leading numbering like "1." or "42)"
-        text = re.sub(r'^[0-9]+[\.)]?\s*', '', text)
-        return text
-
-    # Debug: list available files
-    try:
-        cwd_files = os.listdir('.')
-        st.debug = getattr(st, 'debug', st.write)
-        st.debug(f"Files in cwd: {cwd_files}")
-        data_files = os.listdir('/mnt/data') if os.path.exists('/mnt/data') else []
-        st.debug(f"Files in /mnt/data: {data_files}")
-    except Exception:
-        pass
-
-    # Read raw content
+def load_manual_filters_from_file(uploaded_file=None, filepath_txt="manual_filters_degrouped.txt"):
     content = None
     if uploaded_file is not None:
         try:
-            content = uploaded_file.getvalue().decode('utf-8', errors='ignore')
-            st.write(f"Loaded raw manual filters from uploaded file")
+            content = uploaded_file.read().decode('utf-8', errors='ignore')
+            st.write("Loaded raw manual filters from uploaded file")
         except Exception as e:
             st.warning(f"Failed reading uploaded file: {e}")
     else:
-        # Try disk locations
         paths_to_try = [filepath_txt, os.path.join(os.getcwd(), filepath_txt), f"/mnt/data/{filepath_txt}"]
         for path in paths_to_try:
-            try:
-                if os.path.exists(path):
+            if os.path.exists(path):
+                try:
                     with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
                     st.write(f"Loaded raw manual filters from {path}")
                     break
-            except Exception as e:
-                st.warning(f"Failed reading manual filters from {path}: {e}")
+                except Exception as e:
+                    st.warning(f"Failed reading manual filters from {path}: {e}")
     if content is None:
-        st.info("No manual filters loaded. Please upload a valid TXT or CSV file or place manual_filters_full.txt in app directory or /mnt/data.")
+        st.info("No manual filters loaded. Upload TXT or place manual_filters_degrouped.txt in app directory.")
         return []
-    # Split into raw lines
     raw_lines = content.splitlines()
-    # Show raw preview for debugging
     st.text_area("Raw manual filter lines", value="\n".join(raw_lines[:50]), height=200)
-
-    # Determine if degrouped: if file name contains 'degrouped' or if first non-empty lines look like single filters
-    is_degrouped = False
-    # Try detect: many lines starting with keywords like 'Seed Sum', 'Mirror', etc.
-    non_empty = [l for l in raw_lines if l.strip()]
-    if uploaded_file is not None and 'degrouped' in uploaded_file.name.lower():
-        is_degrouped = True
-    else:
-        # simple heuristic: if raw_lines count > 20 and blank lines rare
-        blank_count = sum(1 for l in raw_lines if not l.strip())
-        if blank_count < len(raw_lines) * 0.1:
-            is_degrouped = True
-    # Build entries: if degrouped, each normalized line is an entry; else group blocks separated by blank lines
-    if is_degrouped:
-        for line in raw_lines:
-            nt = normalize(line)
-            if nt:
-                filter_entries.append(nt)
-        st.write(f"Loaded {len(filter_entries)} manual filter entries (each line as filter)")
-    else:
-        # Group into blocks separated by blank lines
-        current_block = []
-        for line in raw_lines:
-            stripped = line.strip()
-            if stripped:
-                nt = normalize(line)
-                if nt:
-                    current_block.append(nt)
-            else:
-                if current_block:
-                    block_text = " ".join(current_block)
-                    filter_entries.append(block_text)
-                    current_block = []
-        if current_block:
-            block_text = " ".join(current_block)
-            filter_entries.append(block_text)
-        st.write(f"Loaded {len(filter_entries)} manual filter entries (blocks from file)")
-    # Preview entries
-    st.text_area("Preview manual filter entries", value="\n\n".join(filter_entries[:20]), height=300)
-    return filter_entries
+    parsed = parse_manual_filters_txt(content)
+    st.write(f"Parsed {len(parsed)} manual filter blocks")
+    st.text_area("Preview manual filter names", value="\n".join(p['name'] for p in parsed[:20]), height=200)
+    return parsed
 
 # ==============================
-# Helper: implement each filter's logic
+# Apply manual filter: wrapper to call function factory
 # ==============================
-def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_digits):
+def apply_manual_filter_fn(fn_entry, combo, seed, hot_digits, cold_digits, due_digits):
     combo_str = combo
     seed_str = str(seed)
-    total = sum(int(d) for d in combo_str)
     seed_sum = calculate_seed_sum(seed_str)
-    ft = filter_text.lower()
-
-    # Example Seed Sum rules
-    def parse_bounds(ft, default_low, default_high):
-        m = re.search(r'sum\s*<\s*(\d+)\s*or\s*>\s*(\d+)', ft)
-        if m:
-            try:
-                low = int(m.group(1)); high = int(m.group(2))
-                return low, high
-            except:
-                return default_low, default_high
-        return default_low, default_high
-
-    # Seed Sum ≤12
-    if re.search(r'seed sum\s*[≤<=]\s*12', ft):
-        if seed_sum <= 12:
-            low, high = parse_bounds(ft, 12, 25)
-            if total < low or total > high:
-                return True
-    # Seed Sum = 13-15
-    if re.search(r'seed sum\s*[=]\s*13[\-–]15', ft):
-        if 13 <= seed_sum <= 15:
-            low, high = parse_bounds(ft, 14, 22)
-            if total < low or total > high:
-                return True
-    # Continue other sum rules...
-    # Additional parsing for other filters can be implemented similarly
-    # Example: Seed Contains rules
-    m_sc = re.search(r'seed contains\s*(\d)', ft)
-    if m_sc:
-        d = m_sc.group(1)
-        if d in seed_str:
-            m_must = re.search(r'must contain[^\d]*(\d)(?:[^\d]+(\d))?', ft)
-            if m_must:
-                required = set()
-                required.add(m_must.group(1))
-                if m_must.group(2):
-                    required.add(m_must.group(2))
-                if not any(r in combo_str for r in required):
-                    return True
-    return False
+    mirror_set = mirror_digits(seed)
+    if 'fn' in fn_entry:
+        fn = fn_entry['fn']
+    else:
+        fac = fn_entry.get('factory')
+        if fac == 'mirror_zero':
+            fn = make_mirror_zero_filter(mirror_set)
+        elif isinstance(fac, tuple) and fac[0] == 'position_forbid':
+            pos, digs = fac[1], fac[2]
+            fn = make_position_forbid_filter(pos, digs)
+        else:
+            return False
+    keep, removed = fn([combo_str], seed_sum=seed_sum)
+    return len(removed) == 1
 
 # ==============================
 # Trap V3 Ranking Integration
@@ -221,10 +240,9 @@ def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_d
 def rank_with_trap_v3(combos, seed):
     try:
         import dc5_trapv3_model as trap_model
-        ranked = trap_model.rank_combinations(combos, str(seed))
-        return ranked
+        return trap_model.rank_combinations(combos, str(seed))
     except ImportError:
-        st.warning("Trap V3 model not available. Ensure `dc5_trapv3_model` is in path and exposes `rank_combinations`.")
+        st.warning("Trap V3 model not available. Ensure dc5_trapv3_model is in path.")
         return combos
     except Exception as e:
         st.error(f"Error running Trap V3 ranking: {e}")
@@ -242,66 +260,54 @@ due_digits = [d for d in st.sidebar.text_input("Due digits (comma-separated):").
 method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"]) 
 enable_trap = st.sidebar.checkbox("Enable Trap V3 Ranking")
 # File uploader for manual filters
-uploaded = st.sidebar.file_uploader("Upload manual filters file (TXT, degrouped list)", type=['txt','csv'])
+uploaded = st.sidebar.file_uploader("Upload manual filters file (TXT degrouped)", type=['txt'])
 
 # Load manual filters
-manual_filters_list = []
-if uploaded is not None or os.path.exists("manual_filters_full.txt") or os.path.exists(f"/mnt/data/manual_filters_full.txt") or os.path.exists("manual_filters_degrouped.txt"):
-    manual_filters_list = load_manual_filters_from_file(uploaded)
+parsed_filters = []
+if uploaded is not None or os.path.exists("manual_filters_degrouped.txt") or os.path.exists(f"/mnt/data/manual_filters_degrouped.txt"):
+    parsed_filters = load_manual_filters_from_file(uploaded)
+filter_entries = build_filter_functions(parsed_filters)
 
 # Generate base pool after core filters
-current_pool = []
 if seed:
     combos_initial = generate_combinations(seed, method)
     filtered_initial = [c for c in combos_initial if not core_filters(c, seed, method=method)]
-    current_pool = filtered_initial.copy()
-    if 'original_pool' not in st.session_state or st.session_state.get('seed') != seed or st.session_state.get('method') != method:
-        st.session_state.original_pool = current_pool.copy()
-        st.session_state.seed = seed
-        st.session_state.method = method
+    st.session_state['original_pool'] = filtered_initial.copy()
 
-# Compute static elimination counts for UI
-ranking_sorted = []
-if seed and manual_filters_list:
-    ranking = []
-    for filt in manual_filters_list:
-        count_elim = len([c for c in st.session_state.original_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
-        ranking.append((filt, count_elim))
-    ranking_sorted = sorted(ranking, key=lambda x: x[1])
-else:
-    ranking_sorted = [(filt, 0) for filt in manual_filters_list]
+# Compute static elimination counts
+def compute_static_counts():
+    counts = []
+    pool = st.session_state.get('original_pool', [])
+    if seed and filter_entries:
+        for fe in filter_entries:
+            cnt = len([c for c in pool if apply_manual_filter_fn(fe, c, seed, hot_digits, cold_digits, due_digits)])
+            counts.append((fe, cnt))
+        counts.sort(key=lambda x: x[1])
+    return counts
 
+ranking_sorted = compute_static_counts()
 st.markdown("## Manual Filters (Least → Most Aggressive)")
-
-if not manual_filters_list:
-    st.info("No manual filters loaded. Upload a filter file or ensure manual_filters_full.txt or manual_filters_degrouped.txt is in app directory or /mnt/data.")
-
-# Compute session_pool by applying selected filters each run
+if not filter_entries:
+    st.info("No manual filters loaded. Upload a degrouped TXT or place manual_filters_degrouped.txt in app directory.")
+# Apply selected filters
 session_pool = st.session_state.get('original_pool', []).copy() if seed else []
-for idx, (filt, static_count) in enumerate(ranking_sorted):
+for idx, (fe, static_count) in enumerate(ranking_sorted):
     col1, col2 = st.columns([0.85, 0.15])
-    key_cb = f"filter_cb_{idx}"
-    key_help = f"help_{idx}"
-    label = filt.split('Logic:')[0].strip() if 'Logic:' in filt else (filt if len(filt) < 60 else filt[:57] + '...')
+    label = fe['name']
     checkbox_label = f"{label} — would eliminate {static_count} combos"
-    checked = col1.checkbox(checkbox_label, key=key_cb)
-    if col2.button("?", key=key_help):
-        elim = len([c for c in session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
-        st.info(f"Filter: {filt}\nSession elimination: {elim} combos")
+    checked = col1.checkbox(checkbox_label, key=f"filter_cb_{idx}")
+    if col2.button("?", key=f"help_{idx}"):
+        elim = len([c for c in session_pool if apply_manual_filter_fn(fe, c, seed, hot_digits, cold_digits, due_digits)])
+        st.info(f"Filter: {fe['name']}\nSession elimination: {elim} combos")
     if checked and seed:
-        session_pool = [c for c in session_pool if not apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
+        session_pool = [c for c in session_pool if not apply_manual_filter_fn(fe, c, seed, hot_digits, cold_digits, due_digits)]
 
 if seed:
-    st.session_state.session_pool = session_pool
-    st.session_state.original_pool = st.session_state.original_pool
-
-st.markdown(f"**Final Remaining combos after selected manual filters:** {len(st.session_state.session_pool) if seed else 0}")
-
-# Show remaining combos
-if seed:
+    st.session_state['session_pool'] = session_pool
+    st.markdown(f"**Final Remaining combos after selected manual filters:** {len(session_pool)}")
     with st.expander("Show all remaining combinations"):
-        if st.session_state.session_pool:
-            for combo in st.session_state.session_pool:
+        if session_pool:
+            for combo in session_pool:
                 st.write(combo)
         else:
             st.write("No combinations remaining.")
@@ -309,7 +315,7 @@ if seed:
 # Trap V3 Ranking
 if enable_trap and seed:
     st.markdown("## Trap V3 Ranking")
-    ranked_list = rank_with_trap_v3(st.session_state.session_pool, seed)
+    ranked_list = rank_with_trap_v3(st.session_state.get('session_pool', []), seed)
     if ranked_list:
         st.write("Top combinations by Trap V3:")
         for combo in ranked_list[:20]:
