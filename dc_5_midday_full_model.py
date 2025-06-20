@@ -1,5 +1,5 @@
 import streamlit as st
-from dc_5_midday_full_model import (
+from dc5_midday_full_model import (
     generate_combinations,
     core_filters,
     manual_filters_list
