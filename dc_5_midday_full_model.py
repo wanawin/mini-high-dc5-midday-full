@@ -142,7 +142,7 @@ for filt, count in ranking_sorted:
     col1, col2 = st.columns([0.9, 0.1])
     checked = col1.checkbox(f"{filt} — would eliminate {count} combos", key=filt)
     if col2.button("?", key=f"help_{filt}"):
-        # Show filter help in popup with proper newline escaping
+    st.info(f"Filter: {filt}\\nEliminates {count} combinations in this session")
         st.info(f"Filter: {filt}
 Eliminates {count} combinations in this session")
     if checked:
