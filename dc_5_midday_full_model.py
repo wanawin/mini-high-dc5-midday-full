@@ -127,20 +127,75 @@ manual_filters_list = [
 # ==============================
 
 def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_digits):
-    # Example implementations (expand as needed)
-    if filter_text.startswith("Sum > 40"):
-        return sum(int(d) for d in combo) > 40
-    if filter_text.startswith("Digit Spread < 4"):
-        digits = [int(d) for d in combo]
-        return max(digits) - min(digits) < 4
-    if filter_text.startswith("Consecutive Digits ≥ 4"):
-        return has_consecutive_run(combo, 4)
-    # default
-    return False
+    """
+    Return True if the combo should be eliminated by the given filter_text.
+    """
+    # Precompute metrics
+    counts = [combo.count(d) for d in set(combo)]
+    digit_list = [int(d) for d in combo]
+    digit_sum = sum(digit_list)
 
+    # Sum filters
+    if filter_text.startswith("Sum > 40"):
+        return digit_sum > 40
+    if filter_text.startswith("Sum < 10"):
+        return digit_sum < 10
+    if filter_text.startswith("Sum ending in 0"):
+        return digit_sum % 10 == 0
+    if filter_text.startswith("Sum ending in 5"):
+        return digit_sum % 10 == 5
+    if filter_text.startswith("Sum = 34"):
+        return digit_sum == 34
+    if filter_text.startswith("Sum = 36"):
+        return digit_sum == 36
+    if filter_text.startswith("Sum = 37"):
+        return digit_sum == 37
+
+    # Spread filter
+    if filter_text.startswith("Digit Spread < 4"):
+        return max(digit_list) - min(digit_list) < 4
+
+    # High-end digit limit
+    if filter_text.startswith("Eliminate if 4 or more digits ≥8"):
+        return sum(1 for d in digit_list if d >= 8) >= 4
+
+    # Triples/Quads/Quints
+    if filter_text.startswith("Eliminate Triples"):
+        return any(c == 3 for c in counts)
+    if filter_text.startswith("Eliminate Quads"):
+        return any(c == 4 for c in counts)
+    if filter_text.startswith("Eliminate Quints"):
+        return any(c == 5 for c in counts)
+
+    # Double-Doubles Only
+    if filter_text.startswith("Double-Doubles Only"):
+        # two digits appear twice and one appears once
+        return sorted(counts) == [1,2,2]
+
+    # No digit 0 in Position 3
+    if filter_text.startswith("No digit 0 in Position 3"):
+        return combo[2] == '0'
+
+    # No repeat of 0, 2, or 3
+    if filter_text.startswith("No repeat of 0, 2, or 3"):
+        return any(combo.count(d) > 1 for d in ['0','2','3'])
+
+    # 3+ Digits > 5
+    if filter_text.startswith("3+ Digits > 5"):
+        return sum(1 for d in digit_list if d > 5) >= 3
+
+    # All Digits 0–5
+    if filter_text.startswith("All Digits 0–5"):
+        return all(d <= 5 for d in digit_list)
+
+    # Consecutive Digit Count ≥ 4
+    if filter_text.startswith("Consecutive Digit Count"):
+        return has_consecutive_run(combo, 4)
+
+    # Default: no elimination
+    return False
 # ==============================
 # Streamlit App
-# ==============================
 
 st.title("DC-5 Midday Blind Predictor")
 
@@ -152,30 +207,56 @@ due_digits = st.sidebar.text_input("Due digits (comma-separated):").replace(' ',
 method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"])
 
 # Generate base pool after core filters
+target = []
 combos_initial = generate_combinations(seed, method) if seed else []
 filtered_initial = [c for c in combos_initial if not core_filters(c, seed)] if seed else []
 
-# Compute elimination counts per filter (for display only)
-ranking = []
-for filt in manual_filters_list:
-    eliminated = [c for c in filtered_initial if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
-    ranking.append((filt, len(eliminated)))
+# Prepare remaining pool
+docs_remaining = filtered_initial.copy()
+
+# Compute static elimination counts for ranking
+ranking = [(filt, len([c for c in filtered_initial if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]))
+           for filt in manual_filters_list]
 ranking_sorted = sorted(ranking, key=lambda x: x[1])
 
 st.markdown("## Manual Filters (Least → Most Aggressive)")
 
-docs_remaining = filtered_initial.copy()
-for filt, count in ranking_sorted:
+# Display filters with dynamic counts
+for filt, static_count in ranking_sorted:
     col1, col2 = st.columns([0.9, 0.1])
-    checked = col1.checkbox(f"{filt} — would eliminate {count} combos", key=filt)
+    checkbox_label = f"{filt} — would eliminate {static_count} combos"
+    checked = col1.checkbox(checkbox_label, key=filt)
+
+    # Help popup shows current elimination count
     if col2.button("?", key=f"help_{filt}"):
-        st.info(f"Filter: {filt}\nEliminates {count} combinations in this session")
+        current_to_remove = [c for c in docs_remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
+        st.info(f"Filter: {filt}
+Eliminates {len(current_to_remove)} combinations in this session")
+
+    # When checked, remove and show dynamic eliminated count and remaining
     if checked:
         to_remove = [c for c in docs_remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
+        eliminated_count = len(to_remove)
         docs_remaining = [c for c in docs_remaining if c not in to_remove]
-        col1.write(f"Remaining combos after '{filt}': {len(docs_remaining)}")
+        col1.write(f"Eliminated {eliminated_count} combos; Remaining combos: {len(docs_remaining)}")
 
 st.markdown(f"**Final Remaining combos after selected manual filters:** {len(docs_remaining)}")
+
+# Trap V3 Ranking (optional)
+if st.sidebar.checkbox("Enable Trap V3 Ranking"):
+    digits = [int(d) for d in seed]
+    trap_combos = set()
+    if method == '1-digit':
+        for d in digits:
+            for p in product(range(10), repeat=4):
+                trap_combos.add(''.join(map(str, sorted((d, *p)))))
+    else:
+        for a, b in combinations(digits, 2):
+            for p in product(range(10), repeat=3):
+                trap_combos.add(''.join(map(str, sorted((a, b, *p)))))
+    trap_sorted = sorted(c for c in trap_combos if c in docs_remaining)
+    st.write("## Trap V3 Ranked Combos")
+    st.dataframe(trap_sorted)
 
 # Prediction button
 if st.sidebar.button("Run Prediction"):
@@ -192,7 +273,7 @@ if st.sidebar.button("Run Prediction"):
     st.write("### Final Predictive Pool")
     st.dataframe(remaining)
 
-# Trap V3 Ranking (optional)
+ (optional)
 if st.sidebar.checkbox("Enable Trap V3 Ranking"):
     digits = [int(d) for d in seed]
     trap_combos = set()
