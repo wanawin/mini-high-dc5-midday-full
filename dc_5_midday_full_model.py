@@ -142,10 +142,10 @@ for filt, count in ranking_sorted:
     col1, col2 = st.columns([0.9, 0.1])
     checked = col1.checkbox(f"{filt} — would eliminate {count} combos", key=filt)
     if col2.button("?", key=f"help_{filt}"):
-        # Show filter help
-        st.info(f"Filter: {filt}
-Eliminates {count} combinations in this session")
-    if checked:
+    # Show filter help in popup
+    st.info(f"""Filter: {filt}
+Eliminates {count} combinations in this session""")
+if checked:
         # Apply filter immediately to remaining pool
         to_remove = [c for c in docs_remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
         docs_remaining = [c for c in docs_remaining if c not in to_remove]
