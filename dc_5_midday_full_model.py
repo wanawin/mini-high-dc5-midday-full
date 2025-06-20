@@ -1,5 +1,11 @@
 import streamlit as st
-from dc5_midday_full_model import (
+import dc_5_trapv_3_model as model
+
+# Core functions from model
+generate_combinations = model.generate_combinations
+core_filters = model.core_filters
+manual_filters_list = model.manual_filters_list
+
     generate_combinations,
     core_filters,
     manual_filters_list
