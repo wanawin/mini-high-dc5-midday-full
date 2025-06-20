@@ -33,31 +33,57 @@ def parse_manual_filters_txt(raw_text: str):
 def build_filter_functions(parsed_filters):
     fns = []
     for pf in parsed_filters:
-        name = pf['name']
-        logic = pf['logic']
-        action = pf['action']
-        lower_name = name.lower()
+        raw_name = pf['name'].strip()
+        logic = pf.get('logic','')
+        action = pf.get('action','')
 
-        # Seed Sum Range Filters
-        m_seed = re.search(r'seed sum\s*[\u2264<=]?\s*(\d+)(?:[\-\u2013](\d+))?', lower_name)
-        if m_seed:
-            if m_seed.group(2):
-                smin = int(m_seed.group(1))
-                smax = int(m_seed.group(2))
+        # Normalize Unicode symbols
+        name_norm = (raw_name
+                     .replace('≥', '>=')
+                     .replace('≤', '<=')
+                     .replace('→', '->')
+                     .replace('–', '-')
+                     .replace('—', '-'))
+        lower_name = name_norm.lower()
+
+        # Seed Sum Filters
+        m_hyphen = re.search(r'seed sum\s*(\d+)\s*-\s*(\d+)', lower_name)
+        m_le     = re.search(r'seed sum\s*<=\s*(\d+)', lower_name)
+        m_ge     = re.search(r'seed sum\s*>=\s*(\d+)', lower_name)
+        m_eq     = re.search(r'seed sum\s*=\s*(\d+)', lower_name)
+
+        if m_hyphen or m_le or m_ge or m_eq:
+            seed_sum_min = seed_sum_max = None
+            if m_hyphen:
+                seed_sum_min = int(m_hyphen.group(1))
+                seed_sum_max = int(m_hyphen.group(2))
+            elif m_le:
+                seed_sum_max = int(m_le.group(1))
+            elif m_ge:
+                seed_sum_min = int(m_ge.group(1))
+            elif m_eq:
+                seed_sum_min = seed_sum_max = int(m_eq.group(1))
+
+            low = high = None
+            m_between = re.search(r'between\s*(\d+)\s*(?:and|-)\s*(\d+)', action, flags=re.IGNORECASE)
+            if m_between:
+                low = int(m_between.group(1))
+                high = int(m_between.group(2))
             else:
-                val = int(m_seed.group(1))
-                if '≤' in name or '<=' in lower_name:
-                    smin = None
-                    smax = val
-                else:
-                    smin = val
-                    smax = val
-            lt = re.search(r'sum\s*<\s*(\d+)', action)
-            gt = re.search(r'>\s*(\d+)', action)
-            low = int(lt.group(1)) if lt else None
-            high = int(gt.group(1)) if gt else None
+                m_le2 = re.search(r'sum\s*<=\s*(\d+)', action)
+                m_lt2 = re.search(r'sum\s*<\s*(\d+)', action)
+                m_ge2 = re.search(r'sum\s*>=\s*(\d+)', action)
+                m_gt2 = re.search(r'sum\s*>\s*(\d+)', action)
+                if m_le2:
+                    high = int(m_le2.group(1))
+                elif m_lt2:
+                    high = int(m_lt2.group(1)) - 1
+                if m_ge2:
+                    low = int(m_ge2.group(1))
+                elif m_gt2:
+                    low = int(m_gt2.group(1)) + 1
 
-            def make_conditional_sum_range_filter(seed_sum_min=None, seed_sum_max=None, low=None, high=None):
+            def make_conditional_sum_range_filter(seed_sum_min, seed_sum_max, low, high):
                 def filter_fn(combo_list, seed_sum=None, **kwargs):
                     if seed_sum is None:
                         return combo_list, []
@@ -75,27 +101,36 @@ def build_filter_functions(parsed_filters):
                     return keep, removed
                 return filter_fn
 
-            fn = make_conditional_sum_range_filter(seed_sum_min=smin, seed_sum_max=smax, low=low, high=high)
-            fns.append({'name': name, 'fn': fn, 'descr': logic})
+            fn = make_conditional_sum_range_filter(seed_sum_min, seed_sum_max, low, high)
+            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
             continue
 
-        # Seed Contains 2 → Winner Must Contain 5 or 4
-        if "seed contains 2" in lower_name and "5 or 4" in action:
-            def must_have_5_or_4(combo_list, seed=None, **kwargs):
-                if seed and '2' in str(seed):
-                    keep, removed = [], []
-                    for c in combo_list:
-                        if '5' in c or '4' in c:
-                            keep.append(c)
-                        else:
-                            removed.append(c)
-                    return keep, removed
-                return combo_list, []
+        # Seed Contains -> Winner Must Contain
+        if 'seed contains' in lower_name and 'winner must contain' in lower_name:
+            m_seed_contains = re.search(r'seed contains\s*(\d+)', lower_name)
+            m_winner_must = re.search(r'winner must contain\s*([\d,\s orand]+)', lower_name)
+            if m_seed_contains and m_winner_must:
+                seed_digit = m_seed_contains.group(1)
+                reqs = re.findall(r'\d+', m_winner_must.group(1))
+                reqs = set(reqs)
+                def make_must_contain_filter(seed_digit, reqs):
+                    def filter_fn(combo_list, seed=None, **kwargs):
+                        if seed is not None and str(seed_digit) in str(seed):
+                            keep, removed = [], []
+                            for c in combo_list:
+                                if any(d in c for d in reqs):
+                                    keep.append(c)
+                                else:
+                                    removed.append(c)
+                            return keep, removed
+                        return combo_list, []
+                    return filter_fn
+                fn = make_must_contain_filter(seed_digit, reqs)
+                fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
+                continue
 
-            fns.append({'name': name, 'fn': must_have_5_or_4, 'descr': logic})
-            continue
+        st.warning(f"No function defined for manual filter: '{raw_name}'")
 
-        st.warning(f"No function defined for manual filter: '{name}'")
     return fns
 
 # ==============================
