@@ -142,8 +142,17 @@ for filt, count in ranking_sorted:
     col1, col2 = st.columns([0.9, 0.1])
     checked = col1.checkbox(f"{filt} — eliminates {count} combos", key=filt)
     if col2.button("?", key=f"help_{filt}"):
-        st.info(f"Filter: {filt}\nEliminates {count} combinations in this session")
+        st.info(f"Filter: {filt}
+Eliminates {count} combinations in this session")
     if checked:
+        selected_manual.append(filt)
+
+# Compute and display remaining combos immediately after manual selection
+remaining_after_manual = filtered_initial.copy()
+for mf in selected_manual:
+    remaining_after_manual = [c for c in remaining_after_manual if not apply_manual_filter(mf, c, seed, hot_digits, cold_digits, due_digits)]
+st.markdown(f"**Remaining combos after selected manual filters:** {len(remaining_after_manual)}")
+
         selected_manual.append(filt)
 
 # --- Run Prediction ---
