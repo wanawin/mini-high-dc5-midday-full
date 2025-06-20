@@ -170,3 +170,31 @@ if st.sidebar.button("Run Prediction"):
         st.write(f"Remaining combos: {len(remaining)}")
     st.write("### Final Predictive Pool")
     st.dataframe(remaining)
+
+# ==============================
+# Trap V3 Ranking (Seed-Pair & Mirror Logic)
+# ==============================
+from itertools import combinations, product
+
+# Generate trap combos based on seed
+@st.cache_data
+def generate_trap_combos(seed, mode):
+    digits = [int(d) for d in seed]
+    combos = set()
+    if mode == 'digit':
+        for d in digits:
+            for p in product(range(10), repeat=4):
+                combos.add(''.join(map(str, sorted((d, *p)))))
+    else:
+        for a, b in combinations(digits, 2):
+            for p in product(range(10), repeat=3):
+                combos.add(''.join(map(str, sorted((a, b, *p)))))
+    return sorted(combos)
+
+# Trap V3 UI
+if st.sidebar.checkbox("Enable Trap V3 Ranking"):
+    trap_combos = generate_trap_combos(seed, 'digit' if method=='1-digit' else 'pair')
+    # intersect with remaining manual pool
+    ranked = [c for c in remaining_after_manual if c in trap_combos]
+    st.write("## Trap V3 Ranked Combos")
+    st.dataframe(ranked)
