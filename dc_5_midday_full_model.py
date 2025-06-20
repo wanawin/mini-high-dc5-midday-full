@@ -30,135 +30,42 @@ def parse_manual_filters_txt(raw_text: str):
             st.warning(f"Skipped manual-filter block (not 4 lines): {blk[:50]}...")
     return entries
 
-def build_filter_functions(parsed_filters):
-    fns = []
-    for pf in parsed_filters:
-        raw_name = pf['name'].strip()
-        logic = pf.get('logic','')
-        action = pf.get('action','')
+# ==============================
+# Load Manual Filters
+# ==============================
+manual_txt_path = "manual_filters_full.txt"
+if os.path.exists(manual_txt_path):
+    raw_txt = open(manual_txt_path, 'r').read()
+    st.info(f"Loaded raw manual filters from {manual_txt_path}")
+    parsed = parse_manual_filters_txt(raw_txt)
+    st.text_area("Raw manual filter lines", raw_txt, height=200)
+    st.write(f"Parsed {len(parsed)} manual filter blocks")
 
-        name_norm = (raw_name
-                     .replace('≥', '>=')
-                     .replace('≤', '<=')
-                     .replace('→', '->')
-                     .replace('–', '-')
-                     .replace('—', '-'))
-        lower_name = name_norm.lower()
+    # Import dynamic builder
+    from dc5_manual_filter_ranked_list import build_filter_functions
+    filter_functions = build_filter_functions(parsed)
+    st.write("Preview manual filter names", [f['name'] for f in filter_functions])
 
-        m_hyphen = re.search(r'seed sum\s*(\d+)\s*-\s*(\d+)', lower_name)
-        m_le     = re.search(r'seed sum\s*<=\s*(\d+)', lower_name)
-        m_ge     = re.search(r'seed sum\s*>=\s*(\d+)', lower_name)
-        m_eq     = re.search(r'seed sum\s*=\s*(\d+)', lower_name)
+    seed_input = st.text_input("Enter Seed (5 digits, optional)")
+    seed_sum = sum(int(d) for d in seed_input) if seed_input.isdigit() and len(seed_input) == 5 else None
 
-        if m_hyphen or m_le or m_ge or m_eq:
-            seed_sum_min = seed_sum_max = None
-            if m_hyphen:
-                seed_sum_min = int(m_hyphen.group(1))
-                seed_sum_max = int(m_hyphen.group(2))
-            elif m_le:
-                seed_sum_max = int(m_le.group(1))
-            elif m_ge:
-                seed_sum_min = int(m_ge.group(1))
-            elif m_eq:
-                seed_sum_min = seed_sum_max = int(m_eq.group(1))
+    uploaded_file = st.file_uploader("Upload 5-digit combos (1 per line)", type=["txt"])
+    combo_list = []
+    if uploaded_file:
+        combo_list = [ln.strip() for ln in uploaded_file.read().decode("utf-8").splitlines() if ln.strip()]
+    elif st.button("Use Example Combos"):
+        combo_list = ["12345", "13579", "11111", "98765", "45678", "22222"]
 
-            low = high = None
-            m_between = re.search(r'between\s*(\d+)\s*(?:and|-)\s*(\d+)', action, flags=re.IGNORECASE)
-            if m_between:
-                low = int(m_between.group(1))
-                high = int(m_between.group(2))
-            else:
-                m_le2 = re.search(r'sum\s*<=\s*(\d+)', action)
-                m_lt2 = re.search(r'sum\s*<\s*(\d+)', action)
-                m_ge2 = re.search(r'sum\s*>=\s*(\d+)', action)
-                m_gt2 = re.search(r'sum\s*>\s*(\d+)', action)
-                if m_le2:
-                    high = int(m_le2.group(1))
-                elif m_lt2:
-                    high = int(m_lt2.group(1)) - 1
-                if m_ge2:
-                    low = int(m_ge2.group(1))
-                elif m_gt2:
-                    low = int(m_gt2.group(1)) + 1
-
-            def make_conditional_sum_range_filter(seed_sum_min, seed_sum_max, low, high):
-                def filter_fn(combo_list, seed_sum=None, **kwargs):
-                    if seed_sum is None:
-                        return combo_list, []
-                    if seed_sum_min is not None and seed_sum < seed_sum_min:
-                        return combo_list, []
-                    if seed_sum_max is not None and seed_sum > seed_sum_max:
-                        return combo_list, []
-                    keep, removed = [], []
-                    for combo in combo_list:
-                        s = sum(int(d) for d in combo)
-                        if (low is not None and s < low) or (high is not None and s > high):
-                            removed.append(combo)
-                        else:
-                            keep.append(combo)
-                    return keep, removed
-                return filter_fn
-
-            fn = make_conditional_sum_range_filter(seed_sum_min, seed_sum_max, low, high)
-            fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
-            continue
-
-        if 'seed contains' in lower_name and 'winner must contain' in lower_name:
-            m_seed_contains = re.search(r'seed contains\s*(\d+)', lower_name)
-            m_winner_must = re.search(r'winner must contain\s*([\d,\s orand]+)', lower_name)
-            if m_seed_contains and m_winner_must:
-                seed_digit = m_seed_contains.group(1)
-                reqs = re.findall(r'\d+', m_winner_must.group(1))
-                reqs = set(reqs)
-                def make_must_contain_filter(seed_digit, reqs):
-                    def filter_fn(combo_list, seed=None, **kwargs):
-                        if seed is not None and str(seed_digit) in str(seed):
-                            keep, removed = [], []
-                            for c in combo_list:
-                                if any(d in c for d in reqs):
-                                    keep.append(c)
-                                else:
-                                    removed.append(c)
-                            return keep, removed
-                        return combo_list, []
-                    return filter_fn
-                fn = make_must_contain_filter(seed_digit, reqs)
-                fns.append({'name': raw_name, 'fn': fn, 'descr': logic})
-                continue
-
-        if 'all digits are low' in lower_name:
-            def low_digits_filter(combo_list, **kwargs):
-                keep, removed = [], []
-                for combo in combo_list:
-                    if all(int(d) <= 3 for d in combo):
-                        removed.append(combo)
-                    else:
-                        keep.append(combo)
-                return keep, removed
-            fns.append({'name': raw_name, 'fn': low_digits_filter, 'descr': logic})
-            continue
-
-        if 'consecutive digit count' in lower_name:
-            def has_consecutive_digits(combo):
-                digits = sorted(int(d) for d in combo)
-                streak = 1
-                for i in range(1, len(digits)):
-                    if digits[i] == digits[i - 1] + 1:
-                        streak += 1
-                        if streak >= 3:
-                            return True
-                    else:
-                        streak = 1
-                return False
-            def consec_filter(combo_list, **kwargs):
-                keep, removed = [], []
-                for combo in combo_list:
-                    if has_consecutive_digits(combo):
-                        removed.append(combo)
-                    else:
-                        keep.append(combo)
-                return keep, removed
-            fns.append({'name': raw_name, 'fn': consec_filter, 'descr': logic})
-            continue
-
-    return fns
+    if combo_list:
+        st.write(f"Loaded {len(combo_list)} combinations.")
+        remaining = combo_list[:]
+        total_removed = 0
+        for filt in filter_functions:
+            if st.checkbox(f"Apply: {filt['name']}", value=True):
+                remaining, removed = filt['fn'](remaining, seed=seed_input, seed_sum=seed_sum)
+                st.write(f"Removed by '{filt['name']}': {len(removed)}")
+                total_removed += len(removed)
+        st.success(f"Final Count: {len(remaining)} combos (Removed: {total_removed})")
+        st.download_button("Download Final Combos", "\n".join(remaining), file_name="filtered_combos.txt")
+else:
+    st.error("manual_filters_full.txt not found.")
