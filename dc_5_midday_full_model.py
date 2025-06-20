@@ -6,11 +6,6 @@ generate_combinations = model.generate_combinations
 core_filters = model.core_filters
 manual_filters_list = model.manual_filters_list
 
-    generate_combinations,
-    core_filters,
-    manual_filters_list
-)
-
 # ==============================
 # Streamlit App Helper: apply_manual_filter stub
 # ==============================
