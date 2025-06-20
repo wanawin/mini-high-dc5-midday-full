@@ -144,8 +144,8 @@ for filt, count in ranking_sorted:
     checked = col1.checkbox(f"{filt} — would eliminate {count} combos", key=filt)
     if col2.button("?", key=f"help_{filt}"):
     st.info(f"""Filter: {filt}
-Eliminates {count} combinations in this session""")
-    if checked:
+147     if col2.button("?", key=f"help_{filt}"):
+148         st.info(f"Filter: {filt}\nEliminates {count} combinations in this session")
         # Apply filter immediately to remaining pool
         to_remove = [c for c in remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
         remaining = [c for c in remaining if c not in to_remove]
