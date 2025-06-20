@@ -83,8 +83,10 @@ def build_filter_functions(parsed_filters):
     fns = []
     for name, fn in ranked:
         match_found = False
+        norm_ranked = normalize_name(name)
         for pf in parsed_filters:
-            if normalize_name(pf['name']) in normalize_name(name):
+            norm_pf = normalize_name(pf['name'])
+            if norm_pf in norm_ranked or norm_ranked in norm_pf:
                 fns.append({"name": name, "fn": fn, "descr": pf.get('logic', '')})
                 match_found = True
                 break
