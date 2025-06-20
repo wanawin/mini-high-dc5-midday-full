@@ -65,7 +65,32 @@ def core_filters(combo, seed):
 
 # ==============================
 # Manual filter definitions (static, ranked externally)
-# ==============================
+# Load manual filters from an external file (one filter name per line) or define inline list.
+# Place a file named 'manual_filters.txt' alongside this script with each filter name on its own line in the desired order.
+import os
+
+def load_manual_filters(filepath="manual_filters.txt"):
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r") as f:
+                lines = [line.strip() for line in f if line.strip()]
+            return lines
+        except Exception as e:
+            st.error(f"Error loading manual filters from {filepath}: {e}")
+            return []
+    else:
+        # Fallback: inline list (populate manually)
+        return [
+            "Eliminate Triples (any digit appears 3 times)",
+            "Eliminate Quads (any digit appears 4 times)",
+            "Eliminate Quints (same digit repeated)",
+            "Eliminate if 4 or more digits ≥8",
+            # Add additional filters here if not using external file
+        ]
+
+# Populate manual_filters_list with either loaded or inline
+manual_filters_list = load_manual_filters()
+# ===============================
 # Populate this list with all manual filter names in desired least→most aggressive order.
 manual_filters_list = [
     # Example structural filters; extend with full list
