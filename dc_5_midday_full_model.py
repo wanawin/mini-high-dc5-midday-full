@@ -85,6 +85,49 @@ def load_manual_filters(filepath="manual_filters.txt"):
             "Eliminate Quads (any digit appears 4 times)",
             "Eliminate Quints (same digit repeated)",
             "Eliminate if 4 or more digits ≥8",
+1. Cold Digit Trap — Requires at least 1 digit from the 4 coldest digits.
+2. Mirror Count = 0 — Eliminate combos that do not contain any mirror digit from the seed.
+3. Repeating Digit Filter (3+ Shared & Sum < 25) — For Singles only.
+4. Sum > 40 — Eliminates combos where digit sum is over 40.
+5. Digit Spread < 4 — Eliminates combos with low spread between digits.
+6. High-End Digit Limit — Eliminates if 2 or more digits ≥ 8.
+7. All Low Digits (0–3) — Eliminates if all 5 digits are from 0 to 3.
+8. Consecutive Digits ≥ 4 — Eliminates clusters of consecutive digits.
+9. Double-Doubles Only — Eliminates combos with exactly 3 unique digits, two of which appear twice.
+10. Quint Filter — All 5 digits identical.
+11. Quad Filter — 4 digits identical.
+12. Triple Filter — 3 digits identical.
+13. Mild Double-Double Filter — Exactly 4 digits: one twice, two once.
+14. No 2-Digit Internal Mirror Pairs — Eliminates combos with digit and its mirror.
+15. Prime Digit Filter — Eliminates combos with ≥2 prime digits (2,3,5,7).
+16. Sum Category Transition Filter — Very Low to Mid.
+17. Sum Category Transition Filter — Mid to Very Low.
+18. Sum Category Transition Filter — Low to Mid.
+19. Mirror Sum = Combo Sum — Eliminates combos whose digit sum matches seed mirror sum.
+20. Combo Contains Last Digit of Mirror Sum — Manual filter.
+21. Seed Contains 0 → Winner must contain 1, 2, or 3.
+22. Seed Contains 1 → Winner must contain 2, 3, or 4.
+23. Seed Contains 2 → Winner must contain 4 or 5.
+24. V-Trac: All Digits Same Group — Eliminates if all digits share the same V-Trac group.
+25. V-Trac: Only 2 Groups Present — Eliminates if only 2 V-Trac groups used.
+26. V-Trac: All 5 Groups Present — Eliminates if all 5 V-Trac groups used.
+27. V-Trac: All Seed V-Tracs Present — Eliminates if all V-Trac groups from seed are in combo.
+28. V-Trac: None of Seed V-Tracs Present — Eliminates if no seed V-Tracs in combo.
+29. Position 1 Cannot Be 4 or 7 — Manual trap filter.
+30. Position 3 Cannot Be 3 or 9 — Manual trap filter.
+31. Position 4 Cannot Be 4 — Manual trap filter.
+32. Position 5 Cannot Be 4 — Manual trap filter.
+33. Eliminate if Digit 4 Repeats.
+34. Eliminate if Digit 7 Repeats.
+35. Seed Contains 00 and Sum <11 or >33.
+36. Seed Contains 02 and Sum <7 or >26.
+37. Seed Contains 03 and Sum <13 or >35.
+38. Seed Contains 04 and Sum <10 or >29.
+39. Seed Contains 05 and Sum <10 or >30.
+40. Seed Contains 06 and Sum <8 or >29.
+41. Seed Contains 07 and Sum <8 or >28.
+42. Shared Digits vs Sum Thresholds — Grouped Set (Filters #1–4, 36–40, 71–79, 106–175)
+            
             # Add additional filters here if not using external file
         ]
 
