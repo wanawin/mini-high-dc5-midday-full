@@ -125,50 +125,12 @@ def load_manual_filters_from_file(uploaded_file=None,
     # Show raw preview for debugging
     st.text_area("Raw manual filter lines", value="\n".join(raw_lines[:50]), height=200)
 
-        # Process lines into blocks: group by blank lines only
-    blocks = []
-    current = []
+    # Process each non-empty normalized line as separate filter
     for line in raw_lines:
         nt = normalize(line)
         if nt:
-            current.append(nt)
-        else:
-            if current:
-                blocks.append(current)
-                current = []
-    if current:
-        blocks.append(current)
-
-    # Combine each block into single filter text
-    for blk in blocks:
-        combined = ' '.join(blk)
-        filters.append(combined)
-    st.write(f"Loaded {len(filters)} manual filter entries (grouped from file)")
-    return filters
-    blocks = []
-    current = []
-    header_pattern = re.compile(r'^(Seed Sum|Seed Contains|Mirror Count|V-Trac|Hot Digits|Cold Digits|Type:|Logic:|Action:)', re.IGNORECASE)
-    for line in raw_lines:
-        nt = normalize(line)
-        if nt:
-            # If line starts a new filter header and current has content, start new block
-            if header_pattern.match(nt) and current:
-                blocks.append(current)
-                current = [nt]
-            else:
-                current.append(nt)
-        else:
-            if current:
-                blocks.append(current)
-                current = []
-    if current:
-        blocks.append(current)
-
-    # Combine each block into single filter text
-    for blk in blocks:
-        combined = ' '.join(blk)
-        filters.append(combined)
-    st.write(f"Loaded {len(filters)} manual filter entries (grouped from file)")
+            filters.append(nt)
+    st.write(f"Loaded {len(filters)} manual filter entries (each non-empty line)")
     return filters
 
 # ==============================
