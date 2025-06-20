@@ -1,12 +1,11 @@
 import streamlit as st
 from itertools import product, combinations
 import os
+import pandas as pd
 
 # ==============================
 # Inline DC-5 Midday Model Functions
 # ==============================
-# These helper functions support filter logic and seed processing.
-
 def calculate_seed_sum(seed):
     s = str(seed)
     return sum(int(d) for d in s if d.isdigit())
@@ -37,8 +36,6 @@ def mirror_digits(combo):
 # ==============================
 # Generate combinations function (deduplicated)
 # ==============================
-# Generates all sorted combos based on seed and method.
-
 def generate_combinations(seed, method="2-digit pair"):
     all_digits = '0123456789'
     combos = set()
@@ -61,7 +58,6 @@ def generate_combinations(seed, method="2-digit pair"):
 # ==============================
 # Core filters: percentile stub and seed intersection
 # ==============================
-
 def primary_percentile_pass(combo):
     # INLINE COMMENT: Replace stub with actual percentile logic if available.
     return True
@@ -77,200 +73,173 @@ def core_filters(combo, seed, method="2-digit pair"):
     return False
 
 # ==============================
-# Manual filter definitions (static, ranked externally)
+# Manual filter definitions (dynamic load from CSV or file)
 # ==============================
-
-def load_manual_filters(filepath="manual_filters.txt"):
-    # Load filters from file or fallback to static list
-    if os.path.exists(filepath):
+def load_manual_filters(filepath_txt="manual_filters.txt", filepath_csv="DC5_Midday_Filter_List__With_Descriptions_.csv"):
+    filters = []
+    # Try CSV first: expect a column named 'Filter Name' or similar
+    if os.path.exists(filepath_csv):
         try:
-            filters = []
-            with open(filepath, "r") as f:
-                for line in f:
-                    text = line.strip()
+            df = pd.read_csv(filepath_csv)
+            col_candidates = [c for c in df.columns if 'filter' in c.lower() or 'name' in c.lower()]
+            if col_candidates:
+                for text in df[col_candidates[0]].astype(str).tolist():
+                    text = text.strip()
                     if not text:
                         continue
-                    # Remove leading numbering if present
+                    text = text.replace('—', '-').replace('–', '-')
+                    # Remove leading numbering
                     if text and text[0].isdigit():
                         parts = text.split('.', 1)
                         if len(parts) == 2 and parts[0].isdigit():
                             text = parts[1].strip()
-                    # Normalize dashes: replace en/em with hyphen
+                    filters.append(text)
+                return filters
+        except Exception as e:
+            st.warning(f"Failed loading CSV manual filters: {e}")
+    # Next try txt file
+    if os.path.exists(filepath_txt):
+        try:
+            with open(filepath_txt, "r") as f:
+                for line in f:
+                    text = line.strip()
+                    if not text:
+                        continue
+                    if text and text[0].isdigit():
+                        parts = text.split('.', 1)
+                        if len(parts) == 2 and parts[0].isdigit():
+                            text = parts[1].strip()
                     text = text.replace('—', '-').replace('–', '-')
                     filters.append(text)
             return filters
         except Exception as e:
-            st.error(f"Error loading manual filters from {filepath}: {e}")
-            return []
-    else:
-        # Fallback static list: inline full filter list
-        return [
-            "Cold Digit Trap - Requires at least 1 digit from the 4 coldest digits",
-            "Mirror Count = 0 - Eliminate combos that do not contain any mirror digit from the seed",
-            "Repeating Digit Filter (3+ Shared & Sum < 25) - For Singles only",
-            "Sum > 40 - Eliminates combos where digit sum is over 40",
-            "Digit Spread < 4 - Eliminates combos with low spread between digits",
-            "High-End Digit Limit - Eliminates if 2 or more digits >= 8",
-            "All Low Digits (0-3) - Eliminates if all 5 digits are from 0 to 3",
-            "Consecutive Digits >= 4 - Eliminates clusters of consecutive digits",
-            "Double-Doubles Only - Eliminates combos with exactly 3 unique digits, two of which appear twice",
-            "Quint Filter - All 5 digits identical",
-            "Quad Filter - 4 digits identical",
-            "Triple Filter - 3 digits identical",
-            "Mild Double-Double Filter - Exactly 4 digits: one twice, two once",
-            "No 2-Digit Internal Mirror Pairs - Eliminates combos with digit and its mirror",
-            "Prime Digit Filter - Eliminates combos with >=2 prime digits (2,3,5,7)",
-            "Sum Category Transition Filter - Very Low to Mid",
-            "Sum Category Transition Filter - Mid to Very Low",
-            "Sum Category Transition Filter - Low to Mid",
-            "Mirror Sum = Combo Sum - Eliminates combos whose digit sum matches seed mirror sum",
-            "Combo Contains Last Digit of Mirror Sum",
-            "Seed Contains 0 -> Winner must contain 1, 2, or 3",
-            "Seed Contains 1 -> Winner must contain 2, 3, or 4",
-            "Seed Contains 2 -> Winner must contain 4 or 5",
-            "V-Trac: All Digits Same Group - Eliminates if all digits share the same V-Trac group",
-            "V-Trac: Only 2 Groups Present - Eliminates if only 2 V-Trac groups used",
-            "V-Trac: All 5 Groups Present - Eliminates if all 5 V-Trac groups used",
-            "V-Trac: All Seed V-Tracs Present - Eliminates if all V-Trac groups from seed are in combo",
-            "V-Trac: None of Seed V-Tracs Present - Eliminates if no seed V-Tracs in combo",
-            "Position 1 Cannot Be 4 or 7",
-            "Position 3 Cannot Be 3 or 9",
-            "Position 4 Cannot Be 4",
-            "Position 5 Cannot Be 4",
-            "Eliminate if Digit 4 Repeats",
-            "Eliminate if Digit 7 Repeats",
-            "Seed Contains 00 and Sum <11 or >33",
-            "Seed Contains 02 and Sum <7 or >26",
-            "Seed Contains 03 and Sum <13 or >35",
-            "Seed Contains 04 and Sum <10 or >29",
-            "Seed Contains 05 and Sum <10 or >30",
-            "Seed Contains 06 and Sum <8 or >29",
-            "Seed Contains 07 and Sum <8 or >28",
-            "Shared Digits vs Sum Thresholds - Grouped Set",
-            # Continue listing all remaining filter names here...
-        ]
+            st.warning(f"Error loading manual filters from txt: {e}")
+    # Fallback: if neither file found, user must inline define all 115 filters here
+    # For example:
+    fallback = [
+        # Individually ranked 42 filters
+        "Cold Digit Trap - Requires at least 1 digit from the 4 coldest digits",
+        "Mirror Count = 0 - Eliminate combos that do not contain any mirror digit from the seed",
+        # ... add all 42 individually ranked filters ...
+        # Grouped set 73 filters can be appended here
+        # e.g., "Shared Digits vs Sum Thresholds - Grouped Set ...",
+        # ... continue for all ...
+    ]
+    return fallback
 
 manual_filters_list = load_manual_filters()
 
 # ==============================
-# Helper: apply_manual_filter
+# Helper: implement each filter's logic
 # ==============================
-
 def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_digits):
-    # INLINE COMMENT: Implement logic for each filter_text exactly as named.
-    # Return True to eliminate combo, False to keep.
-
-    # Example implementations for common filters:
-    if "Eliminate Triples" in filter_text or "Triple Filter" in filter_text:
-        for d in set(combo):
-            if combo.count(d) >= 3:
-                return True
-        return False
-    if "Eliminate Quads" in filter_text or "Quad Filter" in filter_text:
-        for d in set(combo):
-            if combo.count(d) >= 4:
-                return True
-        return False
-    if "Eliminate Quints" in filter_text or "Quint Filter" in filter_text:
-        return any(combo.count(d) == 5 for d in set(combo))
-    if "Eliminate if 4 or more digits >=8" in filter_text or "High-End Digit Limit" in filter_text:
-        count = sum(1 for d in combo if int(d) >= 8)
-        return count >= 4
-    # Add more filter logic below following names
-    # e.g., Cold Digit Trap
-    if "Cold Digit Trap" in filter_text:
-        # Requires at least 1 digit from cold_digits
-        for d in combo:
-            if d in cold_digits:
+    combo_str = ''.join(combo)
+    seed_str = str(seed)
+    total = sum(int(d) for d in combo_str)
+    # Cold Digit Trap: requires at least one cold digit in combo; eliminate combos without any
+    if filter_text.lower().startswith("cold digit trap"):
+        for d in cold_digits:
+            if d and d in combo_str:
                 return False
         return True
     # Mirror Count = 0
-    if "Mirror Count = 0" in filter_text:
-        seed_str = str(seed)
-        mirror_set = {str(9-int(d)) for d in seed_str}
-        # Eliminate combos that do not contain any mirror digit
-        for d in combo:
+    if filter_text.lower().startswith("mirror count = 0"):
+        mirror_set = mirror_digits(seed_str)
+        for d in combo_str:
             if d in mirror_set:
                 return False
         return True
-    # Sum > 40
-    if "Sum > 40" in filter_text:
-        total = sum(int(d) for d in combo)
-        return total > 40
-    # Digit Spread < 4
-    if "Digit Spread < 4" in filter_text:
-        return digit_spread(combo) < 4
-    # All Low Digits (0-3)
-    if "All Low Digits" in filter_text:
-        return all(int(d) <= 3 for d in combo)
-    # Consecutive Digits >= 4
-    if "Consecutive Digits >= 4" in filter_text:
-        return has_consecutive_run(combo, run_length=4)
+    # Sum > threshold
+    if 'sum >' in filter_text.lower():
+        try:
+            import re
+            m = re.search(r'sum >\s*(\d+)', filter_text.lower())
+            if m:
+                thresh = int(m.group(1))
+                return total <= thresh
+        except:
+            return False
+    # Digit Spread <
+    if 'digit spread <' in filter_text.lower():
+        try:
+            import re
+            m = re.search(r'digit spread <\s*(\d+)', filter_text.lower())
+            if m:
+                thresh = int(m.group(1))
+                return digit_spread(combo_str) >= thresh
+        except:
+            return False
+    # High-End Digit Limit or digits >=8
+    if '>= 8' in filter_text or 'high-end digit limit' in filter_text.lower():
+        count = sum(1 for d in combo_str if int(d) >= 8)
+        return count < 2
+    # All Low Digits 0-3
+    if 'all low digits' in filter_text.lower() or '(0' in filter_text:
+        return any(int(d) > 3 for d in combo_str)
+    # Consecutive Digits >=
+    if 'consecutive' in filter_text.lower():
+        import re
+        m = re.search(r'>=\s*(\d+)', filter_text)
+        if m:
+            run_len = int(m.group(1))
+            return not has_consecutive_run(combo_str, run_length=run_len)
     # Double-Doubles Only
-    if "Double-Doubles Only" in filter_text:
-        unique = set(combo)
-        if len(unique) == 3:
-            counts = [combo.count(d) for d in unique]
-            return sorted(counts) == [1,2,2]
+    if 'double-doubles only' in filter_text.lower():
+        uniq = set(combo_str)
+        if len(uniq) == 3:
+            counts = [combo_str.count(d) for d in uniq]
+            if sorted(counts) == [1,2,2]:
+                return False
+        return True
+    # Quint, Quad, Triple
+    if filter_text.lower().startswith("quint filter") or 'same digit repeated' in filter_text.lower():
+        return len(set(combo_str)) != 1
+    if filter_text.lower().startswith("quad filter") or 'digit appears 4 times' in filter_text.lower():
+        return not any(combo_str.count(d) == 4 for d in set(combo_str))
+    if filter_text.lower().startswith("triple filter") or 'digit appears 3 times' in filter_text.lower():
+        return not any(combo_str.count(d) == 3 for d in set(combo_str))
+    # No 2-Digit Internal Mirror Pairs
+    if 'no 2-digit internal mirror' in filter_text.lower():
+        for d in combo_str:
+            if str(9-int(d)) in combo_str:
+                return True
         return False
     # Prime Digit Filter
-    if "Prime Digit Filter" in filter_text:
+    if 'prime digit' in filter_text.lower():
         primes = {'2','3','5','7'}
-        count = sum(1 for d in combo if d in primes)
+        count = sum(1 for d in combo_str if d in primes)
         return count >= 2
-    # Seed Contains 00 and Sum <11 or >33
-    if "Seed Contains 00" in filter_text:
-        seed_str = str(seed)
-        if seed_str.count('0') >= 2:
-            total = sum(int(d) for d in combo)
-            return total < 11 or total > 33
-        return False
-    # Seed Contains 05 and Sum <10 or >30
-    if "Seed Contains 05" in filter_text:
-        seed_str = str(seed)
-        if '0' in seed_str and '5' in seed_str:
-            total = sum(int(d) for d in combo)
-            return total < 10 or total > 30
-        return False
-    # Seed Contains 06 and Sum <8 or >29
-    if "Seed Contains 06" in filter_text:
-        seed_str = str(seed)
-        if '0' in seed_str and '6' in seed_str:
-            total = sum(int(d) for d in combo)
-            return total < 8 or total > 29
-        return False
-    # Seed Contains 07 and Sum <8 or >28
-    if "Seed Contains 07" in filter_text:
-        seed_str = str(seed)
-        if '0' in seed_str and '7' in seed_str:
-            total = sum(int(d) for d in combo)
-            return total < 8 or total > 28
-        return False
-    # Position restrictions
-    if "Position 1 Cannot Be" in filter_text:
-        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
-        bad = {p.strip() for p in parts}
-        return combo[0] in bad
-    if "Position 3 Cannot Be" in filter_text:
-        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
-        bad = {p.strip() for p in parts}
-        return combo[2] in bad
-    if "Position 4 Cannot Be" in filter_text:
-        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
-        bad = {p.strip() for p in parts}
-        return combo[3] in bad
-    if "Position 5 Cannot Be" in filter_text:
-        parts = filter_text.split('Cannot Be')[-1].strip().split('or')
-        bad = {p.strip() for p in parts}
-        return combo[4] in bad
-    # V-Trac and other complex filters to be implemented similarly
-    # Default: keep combo
+    # Seed-based sum range filters e.g., "Seed Contains 00 and Sum <11 or >33"
+    if filter_text.lower().startswith('seed contains') and 'sum' in filter_text.lower():
+        import re
+        # find digits pattern
+        m_pair = re.search(r'seed contains ([0-9]{2})', filter_text.lower())
+        if m_pair:
+            pair = m_pair.group(1)
+            if seed_str.count(pair[0]) >= pair.count(pair[0]) and pair[0]==pair[1]:
+                # parse <a or >b
+                ranges = re.findall(r'<\s*(\d+)|>\s*(\d+)', filter_text)
+                for lt, gt in ranges:
+                    if lt and total < int(lt): return True
+                    if gt and total > int(gt): return True
+        # other seed-pair patterns: implement similarly as needed
+    # Position filters e.g., "Position 1 Cannot Be 4 or 7"
+    if filter_text.lower().startswith('position'):
+        import re
+        m = re.match(r"position (\d+) cannot be (.*)", filter_text.lower())
+        if m:
+            pos = int(m.group(1)) - 1
+            digits = [d.strip() for d in m.group(2).split('or')]
+            if 0 <= pos < len(combo_str) and combo_str[pos] in digits:
+                return True
+            return False
+    # Other filters: implement according to patterns
+    # Default: do not eliminate
     return False
 
 # ==============================
 # Trap V3 Ranking Integration
 # ==============================
-
 def rank_with_trap_v3(combos, seed):
     try:
         import dc5_trapv3_model as trap_model
@@ -299,25 +268,28 @@ enable_trap = st.sidebar.checkbox("Enable Trap V3 Ranking")
 current_pool = []
 if seed:
     combos_initial = generate_combinations(seed, method)
-    # Apply core filters
     filtered_initial = [c for c in combos_initial if not core_filters(c, seed, method=method)]
     current_pool = filtered_initial.copy()
 
 # Compute static elimination counts for ranking
+ranking_sorted = []
 if seed:
     ranking = []
     for filt in manual_filters_list:
         count_elim = len([c for c in current_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
         ranking.append((filt, count_elim))
-    # Sort filters by static elimination count (least to most aggressive)
     ranking_sorted = sorted(ranking, key=lambda x: x[1])
 else:
     ranking_sorted = [(filt, 0) for filt in manual_filters_list]
 
 st.markdown("## Manual Filters (Least → Most Aggressive)")
 
-# Use a copy for session filtering
 session_pool = current_pool.copy() if seed else []
+
+def display_filter_help(filt, session_pool):
+    if seed:
+        current_to_remove = [c for c in session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
+        st.info(f"Filter: {filt}\nEliminates {len(current_to_remove)} combinations in this session")
 
 for idx, (filt, static_count) in enumerate(ranking_sorted):
     col1, col2 = st.columns([0.85, 0.15])
@@ -325,13 +297,8 @@ for idx, (filt, static_count) in enumerate(ranking_sorted):
     key_help = f"help_{idx}"
     checkbox_label = f"{filt} — would eliminate {static_count} combos"
     checked = col1.checkbox(checkbox_label, key=key_cb)
-
-    # Help button: show session-specific elimination count
     if col2.button("?", key=key_help):
-        if seed:
-            current_to_remove = [c for c in session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
-            st.info(f"Filter: {filt}\nEliminates {len(current_to_remove)} combinations in this session")
-    # If checked, remove combos and show inline count
+        display_filter_help(filt, session_pool)
     if checked and seed:
         to_remove = [c for c in session_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
         eliminated_count = len(to_remove)
@@ -340,22 +307,21 @@ for idx, (filt, static_count) in enumerate(ranking_sorted):
 
 st.markdown(f"**Final Remaining combos after selected manual filters:** {len(session_pool)}")
 
-# Show all remaining combinations in an expander (single instance)
+# Show remaining combos
 if seed:
     with st.expander("Show all remaining combinations"):
         if session_pool:
+            # display in columns or paginated if large
             for combo in session_pool:
                 st.write(combo)
         else:
             st.write("No combinations remaining.")
 
-# Trap V3 Ranking display
 if enable_trap and seed:
     st.markdown("## Trap V3 Ranking")
     ranked_list = rank_with_trap_v3(session_pool, seed)
     if ranked_list:
         st.write("Top combinations by Trap V3:")
-        # Show top 20
         for combo in ranked_list[:20]:
             st.write(combo)
         if len(ranked_list) > 20:
@@ -364,11 +330,3 @@ if enable_trap and seed:
                     st.write(combo)
     else:
         st.write("No combinations to rank or ranking failed.")
-
-# Notes:
-# - Ensure manual_filters_list is populated with the full filter texts either via manual_filters.txt or inline list.
-# - Fill in apply_manual_filter logic for each named filter exactly.
-# - INLINE COMMENTS present above to guide where to add logic.
-# - Only one expander for remaining combos and one for ranked combos.
-# - Dashes in filter names should be hyphens ('-'), not special en/em dashes.
-# - If manual_filters_list is empty, verify manual_filters.txt path or inline default list.
