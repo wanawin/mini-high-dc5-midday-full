@@ -149,7 +149,7 @@ Eliminates {count} combinations in this session")
         # Apply filter immediately to remaining pool
         to_remove = [c for c in remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
         remaining = [c for c in remaining if c not in to_remove]
-        col1.write(f"Remaining combos after '{filt}': {len(remaining)}")
+        col1.write(f"Remaining combos after '{filt}': {len(remaining)}")(f"Remaining combos after '{filt}': {len(remaining)}")
 # Optional final summary
 st.markdown(f"**Final Remaining combos after selected filters:** {len(remaining)}")
 
