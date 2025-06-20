@@ -1,5 +1,6 @@
 import streamlit as st
 from itertools import product, combinations
+import os
 
 # ==============================
 # Inline DC-5 Midday Model Functions
@@ -65,9 +66,10 @@ def core_filters(combo, seed):
 
 # ==============================
 # Manual filter definitions (static, ranked externally)
+# ==============================
 # Load manual filters from an external file (one filter name per line) or define inline list.
-# Place a file named 'manual_filters.txt' alongside this script with each filter name on its own line in the desired order.
-import os
+# Place a file named 'manual_filters.txt' alongside this script with each filter name on its own line
+# in the desired order. If file not present, use inline default list (populate with full filters).
 
 def load_manual_filters(filepath="manual_filters.txt"):
     if os.path.exists(filepath):
@@ -79,85 +81,70 @@ def load_manual_filters(filepath="manual_filters.txt"):
             st.error(f"Error loading manual filters from {filepath}: {e}")
             return []
     else:
-        # Fallback: inline list (populate manually)
+        # Fallback: inline list (populate manually with full filters in desired order)
         return [
-            "Eliminate Triples (any digit appears 3 times)",
-            "Eliminate Quads (any digit appears 4 times)",
-            "Eliminate Quints (same digit repeated)",
-            "Eliminate if 4 or more digits ≥8",
-1. Cold Digit Trap — Requires at least 1 digit from the 4 coldest digits.
-2. Mirror Count = 0 — Eliminate combos that do not contain any mirror digit from the seed.
-3. Repeating Digit Filter (3+ Shared & Sum < 25) — For Singles only.
-4. Sum > 40 — Eliminates combos where digit sum is over 40.
-5. Digit Spread < 4 — Eliminates combos with low spread between digits.
-6. High-End Digit Limit — Eliminates if 2 or more digits ≥ 8.
-7. All Low Digits (0–3) — Eliminates if all 5 digits are from 0 to 3.
-8. Consecutive Digits ≥ 4 — Eliminates clusters of consecutive digits.
-9. Double-Doubles Only — Eliminates combos with exactly 3 unique digits, two of which appear twice.
-10. Quint Filter — All 5 digits identical.
-11. Quad Filter — 4 digits identical.
-12. Triple Filter — 3 digits identical.
-13. Mild Double-Double Filter — Exactly 4 digits: one twice, two once.
-14. No 2-Digit Internal Mirror Pairs — Eliminates combos with digit and its mirror.
-15. Prime Digit Filter — Eliminates combos with ≥2 prime digits (2,3,5,7).
-16. Sum Category Transition Filter — Very Low to Mid.
-17. Sum Category Transition Filter — Mid to Very Low.
-18. Sum Category Transition Filter — Low to Mid.
-19. Mirror Sum = Combo Sum — Eliminates combos whose digit sum matches seed mirror sum.
-20. Combo Contains Last Digit of Mirror Sum — Manual filter.
-21. Seed Contains 0 → Winner must contain 1, 2, or 3.
-22. Seed Contains 1 → Winner must contain 2, 3, or 4.
-23. Seed Contains 2 → Winner must contain 4 or 5.
-24. V-Trac: All Digits Same Group — Eliminates if all digits share the same V-Trac group.
-25. V-Trac: Only 2 Groups Present — Eliminates if only 2 V-Trac groups used.
-26. V-Trac: All 5 Groups Present — Eliminates if all 5 V-Trac groups used.
-27. V-Trac: All Seed V-Tracs Present — Eliminates if all V-Trac groups from seed are in combo.
-28. V-Trac: None of Seed V-Tracs Present — Eliminates if no seed V-Tracs in combo.
-29. Position 1 Cannot Be 4 or 7 — Manual trap filter.
-30. Position 3 Cannot Be 3 or 9 — Manual trap filter.
-31. Position 4 Cannot Be 4 — Manual trap filter.
-32. Position 5 Cannot Be 4 — Manual trap filter.
-33. Eliminate if Digit 4 Repeats.
-34. Eliminate if Digit 7 Repeats.
-35. Seed Contains 00 and Sum <11 or >33.
-36. Seed Contains 02 and Sum <7 or >26.
-37. Seed Contains 03 and Sum <13 or >35.
-38. Seed Contains 04 and Sum <10 or >29.
-39. Seed Contains 05 and Sum <10 or >30.
-40. Seed Contains 06 and Sum <8 or >29.
-41. Seed Contains 07 and Sum <8 or >28.
-42. Shared Digits vs Sum Thresholds — Grouped Set (Filters #1–4, 36–40, 71–79, 106–175)
-            
-            # Add additional filters here if not using external file
+            "Cold Digit Trap - Requires at least 1 digit from the 4 coldest digits",
+            "Mirror Count = 0 - Eliminate combos that do not contain any mirror digit from the seed",
+            "Repeating Digit Filter (3+ Shared & Sum < 25) - For Singles only",
+            "Sum > 40 - Eliminates combos where digit sum is over 40",
+            "Digit Spread < 4 - Eliminates combos with low spread between digits",
+            "High-End Digit Limit - Eliminates if 2 or more digits >= 8",
+            "All Low Digits (0-3) - Eliminates if all 5 digits are from 0 to 3",
+            "Consecutive Digits >= 4 - Eliminates clusters of consecutive digits",
+            "Double-Doubles Only - Eliminates combos with exactly 3 unique digits, two of which appear twice",
+            "Quint Filter - All 5 digits identical",
+            "Quad Filter - 4 digits identical",
+            "Triple Filter - 3 digits identical",
+            "Mild Double-Double Filter - Exactly 4 digits: one twice, two once",
+            "No 2-Digit Internal Mirror Pairs - Eliminates combos with digit and its mirror",
+            "Prime Digit Filter - Eliminates combos with >=2 prime digits (2,3,5,7)",
+            "Sum Category Transition - Very Low to Mid",
+            "Sum Category Transition - Mid to Very Low",
+            "Sum Category Transition - Low to Mid",
+            "Mirror Sum = Combo Sum - Eliminates combos whose digit sum matches seed mirror sum",
+            "Combo Contains Last Digit of Mirror Sum - Eliminates if mirror sum contains last digit of combo",
+            "Seed Contains 0 -> Require 1,2, or 3",
+            "Seed Contains 1 -> Require 2,3, or 4",
+            "Seed Contains 2 -> Require 4 or 5",
+            "V-Trac: All Digits Same Group - Eliminates if all digits share the same V-Trac group",
+            "V-Trac: Only 2 Groups Present - Eliminates if only 2 V-Trac groups used",
+            "V-Trac: All 5 Groups Present - Eliminates if all 5 V-Trac groups used",
+            "V-Trac: All Seed V-Tracs Present - Eliminates if all V-Trac groups from seed are in combo",
+            "V-Trac: None of Seed V-Tracs Present - Eliminates if no seed V-Tracs in combo",
+            "Position 1 Cannot Be 4 or 7",
+            "Position 3 Cannot Be 3 or 9",
+            "Position 4 Cannot Be 4",
+            "Position 5 Cannot Be 4",
+            "Eliminate if Digit 4 Repeats",
+            "Eliminate if Digit 7 Repeats",
+            "Seed Contains 00 and Sum <11 or >33",
+            "Seed Contains 02 and Sum <7 or >26",
+            "Seed Contains 03 and Sum <13 or >35",
+            "Seed Contains 04 and Sum <10 or >29",
+            "Seed Contains 05 and Sum <10 or >30",
+            "Seed Contains 06 and Sum <8 or >29",
+            "Seed Contains 07 and Sum <8 or >28",
+            "Shared Digits vs Sum Thresholds - Grouped Set",
+            # Add other filters #71-#175 here appropriately
         ]
 
-# Populate manual_filters_list with either loaded or inline
 manual_filters_list = load_manual_filters()
-# ===============================
-# Populate this list with all manual filter names in desired least→most aggressive order.
-manual_filters_list = [
-    # Example structural filters; extend with full list
-    "Eliminate Triples (any digit appears 3 times)",
-    "Eliminate Quads (any digit appears 4 times)",
-    "Eliminate Quints (same digit repeated)",
-    "Eliminate if 4 or more digits ≥8",  
-    # Add all other filters here, in final ranked order
-]
 
 # ==============================
 # Helper: apply_manual_filter
 # ==============================
 def apply_manual_filter(filter_text, combo, seed, hot_digits, cold_digits, due_digits):
     """Return True if combo should be eliminated by this manual filter."""
-    if filter_text == "Eliminate Triples (any digit appears 3 times)":
+    # Implement logic matching filter_text as needed, using ASCII hyphens
+    if filter_text.startswith("Eliminate Triples"):
         return any(combo.count(d) >= 3 for d in set(combo))
-    if filter_text == "Eliminate Quads (any digit appears 4 times)":
+    if filter_text.startswith("Eliminate Quads"):
         return any(combo.count(d) >= 4 for d in set(combo))
-    if filter_text == "Eliminate Quints (same digit repeated)":
+    if filter_text.startswith("Eliminate Quints") or filter_text.startswith("Quint Filter"):
         return any(combo.count(d) == 5 for d in set(combo))
-    if filter_text == "Eliminate if 4 or more digits ≥8":
-        return sum(1 for d in combo if int(d) >= 8) >= 4
-    # TODO: implement other filter cases by matching filter_text
+    if filter_text.startswith("Eliminate if 4 or more digits >=8") or filter_text.startswith("High-End Digit Limit"):
+        return sum(1 for d in combo if int(d) >= 8) >= 2 if "High-End Digit Limit" in filter_text else sum(1 for d in combo if int(d) >= 8) >= 4
+    # Additional implementations to be added...
     return False
 
 # ==============================
@@ -187,7 +174,6 @@ if seed:
     for filt in manual_filters_list:
         count_elim = len([c for c in docs_remaining if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)])
         ranking.append((filt, count_elim))
-    # Sort by static elimination count
     ranking_sorted = sorted(ranking, key=lambda x: x[1])
 else:
     ranking_sorted = [(filt, 0) for filt in manual_filters_list]
@@ -202,18 +188,15 @@ else:
 
 for idx, (filt, static_count) in enumerate(ranking_sorted):
     col1, col2 = st.columns([0.85, 0.15])
-    # Use a safe key for each checkbox/button
     key_cb = f"filter_cb_{idx}_{filt}"
     key_help = f"help_{idx}_{filt}"
     checkbox_label = f"{filt} — would eliminate {static_count} combos"
     checked = col1.checkbox(checkbox_label, key=key_cb)
 
-    # Help popup: count elimination if applied now
     if col2.button("?", key=key_help):
         if seed:
             current_to_remove = [c for c in current_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
             st.info(f"Filter: {filt}\nEliminates {len(current_to_remove)} combinations in this session")
-    # When checked, apply filter to current_pool
     if checked and seed:
         to_remove = [c for c in current_pool if apply_manual_filter(filt, c, seed, hot_digits, cold_digits, due_digits)]
         eliminated_count = len(to_remove)
@@ -223,7 +206,7 @@ for idx, (filt, static_count) in enumerate(ranking_sorted):
 st.markdown(f"**Final Remaining combos after selected manual filters:** {len(current_pool)}")
 
 # Note:
-# - Populate manual_filters_list with all filter identifiers in your final ranked order.
+# - To list all manual filters, create 'manual_filters.txt' with one name per line in desired order.
 # - Extend apply_manual_filter with logic for each filter_text.
-# - Ensure keys are unique for checkboxes and buttons to persist state.
-# - Avoid expensive repeated generation in core_filters by caching if needed.
+# - Ensure keys are unique for checkboxes/buttons to persist state.
+# - For performance, consider caching generate_combinations if needed.
