@@ -19,14 +19,18 @@ def parse_manual_filters_txt(raw_text: str):
     blocks = [blk.strip() for blk in raw_text.strip().split("\n\n") if blk.strip()]
     for blk in blocks:
         lines = [ln.strip() for ln in blk.splitlines() if ln.strip()]
-        if len(lines) >= 4:
-            name = lines[0]
-            type_line = lines[1]
-            logic_line = lines[2]
-            action_line = lines[3]
-            typ = type_line.split(":", 1)[1].strip() if ":" in type_line else type_line
-            logic = logic_line.split(":", 1)[1].strip() if ":" in logic_line else logic_line
-            action = action_line.split(":", 1)[1].strip() if ":" in action_line else action_line
+        name, typ, logic, action = '', '', '', ''
+        for i, line in enumerate(lines):
+            norm_line = unicodedata.normalize('NFKC', line)
+            if norm_line.lower().startswith("type:"):
+                typ = norm_line.split(":", 1)[1].strip()
+            elif norm_line.lower().startswith("logic:"):
+                logic = norm_line.split(":", 1)[1].strip()
+            elif norm_line.lower().startswith("action:"):
+                action = norm_line.split(":", 1)[1].strip()
+            elif not name and i == 0:
+                name = norm_line
+        if name:
             entries.append({"name": name, "type": typ, "logic": logic, "action": action})
         else:
             skipped_blocks.append(blk)
@@ -97,7 +101,7 @@ if os.path.exists(manual_txt_path):
         elif re.search(r'seed sum\s*<\s*\d+', lower):
             filter_types["<"].append(pf)
         elif re.search(r'seed sum\s*>=\s*\d+', lower):
-            filter_types[">="] .append(pf)
+            filter_types[">="].append(pf)
         elif re.search(r'seed sum\s*>\s*\d+', lower):
             filter_types[">"].append(pf)
         elif re.search(r'seed sum\s*=\s*\d+', lower):
