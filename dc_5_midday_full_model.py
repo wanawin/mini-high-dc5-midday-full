@@ -32,83 +32,47 @@ def parse_manual_filters_txt(raw_text: str):
     return entries
 
 # ==============================
-# Helper: Normalize Names
+# Helper: Normalize and Strip Names
 # ==============================
+def strip_prefix(raw_name: str) -> str:
+    return re.sub(r'^\s*\d+[\.\)]\s*', '', raw_name).strip()
+
 def normalize_name(raw_name: str) -> str:
     s = unicodedata.normalize('NFKC', raw_name)
-    s = s.replace('≥', '>=').replace('≤', '<=').replace('→', '->')
+    s = s.replace('≥', '>=').replace('≤', '<=')
+    s = s.replace('\u2265', '>=').replace('\u2264', '<=')
+    s = s.replace('→', '->').replace('\u2192', '->')
     s = s.replace('–', '-').replace('—', '-')
-    s = s.replace(',', '').lower()
+    s = s.replace('\u200B', '').replace('\u00A0', ' ')
     s = re.sub(r'\s+', ' ', s)
-    return s.strip()
+    return s.strip().lower()
 
 # ==============================
-# Manual Filter Builder (Ranked, Dynamic)
+# Debugging Filter Parsing
 # ==============================
-def build_filter_functions(parsed_filters):
-    fns = []
+def debug_build_filter_functions(parsed_filters):
     for pf in parsed_filters:
-        raw_name = pf['name'].strip()
-        logic = pf.get('logic', '')
-        action = pf.get('action', '')
-        norm = normalize_name(raw_name)
+        raw_name = pf['name']
+        stripped = strip_prefix(raw_name)
+        name_norm = normalize_name(stripped)
+        lower = name_norm.lower()
 
-        # Match seed sum filters
-        m_range = re.search(r'seed sum\s*=\s*(\d+)\s*-\s*(\d+)', norm)
-        m_le = re.search(r'seed sum\s*<=\s*(\d+)', norm)
-        m_ge = re.search(r'seed sum\s*>=\s*(\d+)', norm)
+        st.text(f"RAW name repr:        {repr(raw_name)}")
+        st.text(f"STRIPPED name repr:   {repr(stripped)}")
+        st.text(f"NORMALIZED name repr: {repr(name_norm)}")
 
-        if m_range or m_le or m_ge:
-            seed_min = int(m_range.group(1)) if m_range else (int(m_ge.group(1)) if m_ge else None)
-            seed_max = int(m_range.group(2)) if m_range else (int(m_le.group(1)) if m_le else None)
+        m_hyphen = bool(re.search(r'seed sum\s*(?:=)?\s*(\d+)\s*-\s*(\d+)', lower))
+        m_le     = bool(re.search(r'seed sum\s*(?:<=|≤)\s*(\d+)', lower))
+        m_ge     = bool(re.search(r'seed sum\s*(?:>=|≥)\s*(\d+)', lower))
+        m_eq     = bool(re.search(r'seed sum\s*=\s*(\d+)', lower)) and not m_hyphen
+        m_seed_contains = 'seed contains' in lower and 'winner must contain' in lower
 
-            low, high = None, None
-            m_action = re.search(r'between\s*(\d+)\s*(?:-|and)\s*(\d+)', action)
-            if m_action:
-                low, high = int(m_action.group(1)), int(m_action.group(2))
-            elif 'sum <=' in action or 'sum ≤' in action:
-                high = int(re.search(r'sum\s*(?:<=|≤)\s*(\d+)', action).group(1))
-            elif 'sum >=' in action or 'sum ≥' in action:
-                low = int(re.search(r'sum\s*(?:>=|≥)\s*(\d+)', action).group(1))
-
-            def dynamic_range_filter(seed_sum_min, seed_sum_max, low, high):
-                def fn(combos, seed=None, seed_sum=None):
-                    if seed_sum is None:
-                        return combos, []
-                    if seed_sum_min and seed_sum < seed_sum_min:
-                        return combos, []
-                    if seed_sum_max and seed_sum > seed_sum_max:
-                        return combos, []
-                    kept, removed = [], []
-                    for c in combos:
-                        s = sum(int(d) for d in c)
-                        (kept if (low or 0) <= s <= (high or 99) else removed).append(c)
-                    return kept, removed
-                return fn
-
-            fns.append({"name": raw_name, "fn": dynamic_range_filter(seed_min, seed_max, low, high), "descr": logic})
-            continue
-
-        # Match Seed Contains → Winner Must Contain
-        m_seed = re.search(r'seed contains\s*(\d)', norm)
-        m_req = re.findall(r'winner must contain\s*([\d\sorand]+)', norm)
-        if m_seed and m_req:
-            sd = m_seed.group(1)
-            req_digits = re.findall(r'\d', ' '.join(m_req))
-            def must_contain_logic(sd, reqs):
-                def fn(combos, seed=None, **kwargs):
-                    if seed and sd in seed:
-                        kept, removed = [], []
-                        for c in combos:
-                            (kept if any(d in c for d in reqs) else removed).append(c)
-                        return kept, removed
-                    return combos, []
-                return fn
-            fns.append({"name": raw_name, "fn": must_contain_logic(sd, req_digits), "descr": logic})
-            continue
-
-        st.warning(f"No function defined for manual filter: '{raw_name}'")
-    return fns
+        st.write(f"  Matches hyphen range? {m_hyphen}")
+        st.write(f"  Matches <= pattern?  {m_le}")
+        st.write(f"  Matches >= pattern?  {m_ge}")
+        st.write(f"  Matches = pattern?   {m_eq}")
+        st.write(f"  Matches seed-contains pattern? {m_seed_contains}")
+        st.write("---")
 
 # ==============================
 # Load Manual Filters
@@ -121,28 +85,6 @@ if os.path.exists(manual_txt_path):
     st.text_area("Raw manual filter lines", raw_txt, height=200)
     st.write(f"Parsed {len(parsed)} manual filter blocks")
 
-    filter_functions = build_filter_functions(parsed)
-
-    seed_input = st.text_input("Enter Seed (5 digits, optional)")
-    seed_sum = sum(int(d) for d in seed_input) if seed_input.isdigit() and len(seed_input) == 5 else None
-
-    uploaded_file = st.file_uploader("Upload 5-digit combos (1 per line)", type=["txt"])
-    combo_list = []
-    if uploaded_file:
-        combo_list = [ln.strip() for ln in uploaded_file.read().decode("utf-8").splitlines() if ln.strip()]
-    elif st.button("Use Example Combos"):
-        combo_list = ["12345", "13579", "11111", "98765", "45678", "22222"]
-
-    if combo_list:
-        st.write(f"Loaded {len(combo_list)} combinations.")
-        remaining = combo_list[:]
-        total_removed = 0
-        for filt in filter_functions:
-            if st.checkbox(f"Apply: {filt['name']}", value=True):
-                remaining, removed = filt['fn'](remaining, seed=seed_input, seed_sum=seed_sum)
-                st.write(f"Removed by '{filt['name']}': {len(removed)}")
-                total_removed += len(removed)
-        st.success(f"Final Count: {len(remaining)} combos (Removed: {total_removed})")
-        st.download_button("Download Final Combos", "\n".join(remaining), file_name="filtered_combos.txt")
+    debug_build_filter_functions(parsed)  # DEBUGGING step
 else:
     st.error("manual_filters_full.txt not found.")
