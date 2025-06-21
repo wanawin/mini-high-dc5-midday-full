@@ -15,6 +15,7 @@ st.success("✅ App loaded: Boot successful.")
 # ==============================
 def parse_manual_filters_txt(raw_text: str):
     entries = []
+    skipped_blocks = []
     blocks = [blk.strip() for blk in raw_text.strip().split("\n\n") if blk.strip()]
     for blk in blocks:
         lines = [ln.strip() for ln in blk.splitlines() if ln.strip()]
@@ -28,8 +29,8 @@ def parse_manual_filters_txt(raw_text: str):
             action = action_line.split(":", 1)[1].strip() if ":" in action_line else action_line
             entries.append({"name": name, "type": typ, "logic": logic, "action": action})
         else:
-            st.warning(f"Skipped manual-filter block (not 4 lines): {blk[:50]}...")
-    return entries
+            skipped_blocks.append(blk)
+    return entries, skipped_blocks
 
 # ==============================
 # Helper: Normalize and Strip Names
@@ -40,7 +41,8 @@ def strip_prefix(raw_name: str) -> str:
 def normalize_name(raw_name: str) -> str:
     s = unicodedata.normalize('NFKC', raw_name)
     s = s.replace('≥', '>=').replace('≤', '<=')
-    s = s.replace('\u2265', '>=').replace('\u2264', '<=')
+    s = s.replace('\u2265', '>=')
+    s = s.replace('\u2264', '<=')
     s = s.replace('→', '->').replace('\u2192', '->')
     s = s.replace('–', '-').replace('—', '-')
     s = s.replace('\u200B', '').replace('\u00A0', ' ')
@@ -54,9 +56,13 @@ manual_txt_path = "manual_filters_full.txt"
 if os.path.exists(manual_txt_path):
     raw_txt = open(manual_txt_path, 'r').read()
     st.info(f"Loaded raw manual filters from {manual_txt_path}")
-    parsed = parse_manual_filters_txt(raw_txt)
+    parsed, skipped = parse_manual_filters_txt(raw_txt)
     st.text_area("Raw manual filter lines", raw_txt, height=200)
     st.write(f"Parsed {len(parsed)} manual filter blocks")
+    if skipped:
+        with st.expander(f"⚠️ {len(skipped)} filters skipped due to format issues. Click to view."):
+            for sb in skipped:
+                st.code(sb[:300] + ("..." if len(sb) > 300 else ""))
 
     # ==============================
     # Render Parsed Filters as Actionable Toggles
@@ -68,7 +74,7 @@ if os.path.exists(manual_txt_path):
         "<": [],
         "<=": [],
         ">": [],
-        ">=": [],
+        ">=" : [],
         "=": [],
         "seed->winner": [],
         "shared+sum": [],
@@ -91,7 +97,7 @@ if os.path.exists(manual_txt_path):
         elif re.search(r'seed sum\s*<\s*\d+', lower):
             filter_types["<"].append(pf)
         elif re.search(r'seed sum\s*>=\s*\d+', lower):
-            filter_types[">="].append(pf)
+            filter_types[">="] .append(pf)
         elif re.search(r'seed sum\s*>\s*\d+', lower):
             filter_types[">"].append(pf)
         elif re.search(r'seed sum\s*=\s*\d+', lower):
