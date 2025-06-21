@@ -48,33 +48,6 @@ def normalize_name(raw_name: str) -> str:
     return s.strip().lower()
 
 # ==============================
-# Debugging Filter Parsing
-# ==============================
-def debug_build_filter_functions(parsed_filters):
-    for pf in parsed_filters:
-        raw_name = pf['name']
-        stripped = strip_prefix(raw_name)
-        name_norm = normalize_name(stripped)
-        lower = name_norm.lower()
-
-        st.text(f"RAW name repr:        {repr(raw_name)}")
-        st.text(f"STRIPPED name repr:   {repr(stripped)}")
-        st.text(f"NORMALIZED name repr: {repr(name_norm)}")
-
-        m_hyphen = bool(re.search(r'seed sum\s*(?:=)?\s*(\d+)\s*-\s*(\d+)', lower))
-        m_le     = bool(re.search(r'seed sum\s*(?:<=|≤)\s*(\d+)', lower))
-        m_ge     = bool(re.search(r'seed sum\s*(?:>=|≥)\s*(\d+)', lower))
-        m_eq     = bool(re.search(r'seed sum\s*=\s*(\d+)', lower)) and not m_hyphen
-        m_seed_contains = 'seed contains' in lower and 'winner must contain' in lower
-
-        st.write(f"  Matches hyphen range? {m_hyphen}")
-        st.write(f"  Matches <= pattern?  {m_le}")
-        st.write(f"  Matches >= pattern?  {m_ge}")
-        st.write(f"  Matches = pattern?   {m_eq}")
-        st.write(f"  Matches seed-contains pattern? {m_seed_contains}")
-        st.write("---")
-
-# ==============================
 # Load Manual Filters
 # ==============================
 manual_txt_path = "manual_filters_full.txt"
@@ -85,6 +58,55 @@ if os.path.exists(manual_txt_path):
     st.text_area("Raw manual filter lines", raw_txt, height=200)
     st.write(f"Parsed {len(parsed)} manual filter blocks")
 
-    debug_build_filter_functions(parsed)  # DEBUGGING step
+    # ==============================
+    # Render Parsed Filters as Actionable Toggles
+    # ==============================
+    st.markdown("### 🎯 Manual Filter Selection")
+
+    filter_types = {
+        "hyphen": [],
+        "<=" : [],
+        ">=" : [],
+        "="  : [],
+        "seed→winner": [],
+        "unknown": []
+    }
+
+    for pf in parsed:
+        raw_name = pf['name']
+        stripped = strip_prefix(raw_name)
+        norm = normalize_name(stripped)
+        lower = norm.lower()
+
+        m_hyphen = bool(re.search(r'seed sum\s*(?:=)?\s*(\d+)\s*-\s*(\d+)', lower))
+        m_le     = bool(re.search(r'seed sum\s*(?:<=|≤)\s*(\d+)', lower))
+        m_ge     = bool(re.search(r'seed sum\s*(?:>=|≥)\s*(\d+)', lower))
+        m_eq     = bool(re.search(r'seed sum\s*=\s*(\d+)', lower)) and not m_hyphen
+        m_seed_contains = 'seed contains' in lower and 'winner must contain' in lower
+
+        if m_hyphen:
+            filter_types["hyphen"].append(pf)
+        elif m_le:
+            filter_types["<="].append(pf)
+        elif m_ge:
+            filter_types[">="] .append(pf)
+        elif m_eq:
+            filter_types["="] .append(pf)
+        elif m_seed_contains:
+            filter_types["seed→winner"].append(pf)
+        else:
+            filter_types["unknown"].append(pf)
+
+    # ==============================
+    # Show Filters Grouped by Type
+    # ==============================
+    for group, flist in filter_types.items():
+        if not flist:
+            continue
+        st.markdown(f"#### 🧮 Filter Type: `{group}` ({len(flist)} filters)")
+        for f in flist:
+            label = strip_prefix(f['name'])
+            key = f"filter_{normalize_name(label)}"
+            st.checkbox(label, value=False, key=key)
 else:
     st.error("manual_filters_full.txt not found.")
