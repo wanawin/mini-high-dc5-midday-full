@@ -65,11 +65,17 @@ if os.path.exists(manual_txt_path):
 
     filter_types = {
         "hyphen": [],
-        "<=" : [],
-        ">=" : [],
-        "="  : [],
-        "seed→winner": [],
-        "unknown": []
+        "<": [],
+        "<=": [],
+        ">": [],
+        ">=": [],
+        "=": [],
+        "seed->winner": [],
+        "shared+sum": [],
+        "spread+sum": [],
+        "mirror+sum": [],
+        "named": [],
+        "unclassified": []
     }
 
     for pf in parsed:
@@ -78,28 +84,31 @@ if os.path.exists(manual_txt_path):
         norm = normalize_name(stripped)
         lower = norm.lower()
 
-        m_hyphen = bool(re.search(r'seed sum\s*(?:=)?\s*(\d+)\s*-\s*(\d+)', lower))
-        m_le     = bool(re.search(r'seed sum\s*(?:<=|≤)\s*(\d+)', lower))
-        m_ge     = bool(re.search(r'seed sum\s*(?:>=|≥)\s*(\d+)', lower))
-        m_eq     = bool(re.search(r'seed sum\s*=\s*(\d+)', lower)) and not m_hyphen
-        m_seed_contains = 'seed contains' in lower and 'winner must contain' in lower
-
-        if m_hyphen:
+        if re.search(r'seed sum\s*(=)?\s*\d+\s*-\s*\d+', lower):
             filter_types["hyphen"].append(pf)
-        elif m_le:
+        elif re.search(r'seed sum\s*<=\s*\d+', lower):
             filter_types["<="].append(pf)
-        elif m_ge:
-            filter_types[">="] .append(pf)
-        elif m_eq:
-            filter_types["="] .append(pf)
-        elif m_seed_contains:
-            filter_types["seed→winner"].append(pf)
+        elif re.search(r'seed sum\s*<\s*\d+', lower):
+            filter_types["<"].append(pf)
+        elif re.search(r'seed sum\s*>=\s*\d+', lower):
+            filter_types[">="].append(pf)
+        elif re.search(r'seed sum\s*>\s*\d+', lower):
+            filter_types[">"].append(pf)
+        elif re.search(r'seed sum\s*=\s*\d+', lower):
+            filter_types["="].append(pf)
+        elif 'seed contains' in lower and 'winner must contain' in lower:
+            filter_types["seed->winner"].append(pf)
+        elif 'shared digits' in lower and 'sum' in lower:
+            filter_types["shared+sum"].append(pf)
+        elif 'digit spread' in lower and 'sum' in lower:
+            filter_types["spread+sum"].append(pf)
+        elif 'mirror count' in lower and 'sum' in lower:
+            filter_types["mirror+sum"].append(pf)
+        elif any(tag in lower for tag in ["digit spread", "mirror", "prime", "v-trac", "repeating digit", "consecutive"]):
+            filter_types["named"].append(pf)
         else:
-            filter_types["unknown"].append(pf)
+            filter_types["unclassified"].append(pf)
 
-    # ==============================
-    # Show Filters Grouped by Type
-    # ==============================
     for group, flist in filter_types.items():
         if not flist:
             continue
