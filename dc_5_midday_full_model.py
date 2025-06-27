@@ -1,131 +1,161 @@
 import streamlit as st
-from itertools import product, combinations
-import os
-import re
-import unicodedata
+import os, unicodedata, re
+from itertools import product
+import pandas as pd
+import numpy as np
 
 # ==============================
-# BOOT CHECKPOINT
+# Load and Parse Filters
 # ==============================
-st.title("🤪 DC-5 Midday Filter App")
-st.success("✅ App loaded: Boot successful.")
+@st.cache_data
+def load_ranked_filters(path: str):
+    df = pd.read_csv(path)
+    df.columns = [c.lower().strip() for c in df.columns]
+    rename_map = {}
+    for syn in ['filter name', 'filtername']:
+        if syn in df.columns:
+            rename_map[syn] = 'name'
+    df.rename(columns=rename_map, inplace=True)
+    expected = {'name', 'type', 'logic', 'action'}
+    missing = expected - set(df.columns)
+    if missing:
+        st.sidebar.error(f"Filters CSV missing required columns: {missing}")
+        return []
+    return df.to_dict(orient='records')
+
+filters = load_ranked_filters('Filters_Ranked_Eliminations.csv')
+filter_count = len(filters)
 
 # ==============================
-# Manual Filter Parsing
+# Auto-Filter: Primary Percentile based on predetermined high-yield zones
+# Zones: 0–26%, 30–35%, 36–43%, 50–60%, 60–70%, 80–83%, 93–94%
 # ==============================
-def parse_manual_filters_txt(raw_text: str):
-    entries = []
-    skipped_blocks = []
-    blocks = [blk.strip() for blk in raw_text.strip().split("\n\n") if blk.strip()]
-    for blk in blocks:
-        lines = [ln.strip() for ln in blk.splitlines() if ln.strip()]
-        name, typ, logic, action = '', '', '', ''
-        for i, line in enumerate(lines):
-            norm_line = unicodedata.normalize('NFKC', line)
-            if norm_line.lower().startswith("type:"):
-                typ = norm_line.split(":", 1)[1].strip()
-            elif norm_line.lower().startswith("logic:"):
-                logic = norm_line.split(":", 1)[1].strip()
-            elif norm_line.lower().startswith("action:"):
-                action = norm_line.split(":", 1)[1].strip()
-            elif not name and i == 0:
-                name = norm_line
-        if name:
-            entries.append({"name": name, "type": typ, "logic": logic, "action": action})
+def apply_primary_percentile(combos):
+    # Calculate digit-sum metric
+    metrics = np.array([sum(int(d) for d in combo) for combo in combos])
+    # Define percentile bands
+    bands = [(0, 26), (30, 35), (36, 43), (50, 60), (60, 70), (80, 83), (93, 94)]
+    # Compute thresholds for each percentile in bands
+    pct_values = {p: np.percentile(metrics, p) for band in bands for p in band}
+    # Filter combos in any of the bands
+    keep, removed = [], []
+    for combo, m in zip(combos, metrics):
+        in_band = False
+        for low_pct, high_pct in bands:
+            low_val = pct_values[low_pct]
+            high_val = pct_values[high_pct]
+            if low_val <= m <= high_val:
+                keep.append(combo)
+                in_band = True
+                break
+        if not in_band:
+            removed.append(combo)
+    return keep, removed
+
+# ==============================
+# Auto-Filter: Deduplication
+# ==============================
+def apply_deduplication(combos):
+    seen = set()
+    unique = []
+    removed = []
+    for c in combos:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
         else:
-            skipped_blocks.append(blk)
-    return entries, skipped_blocks
+            removed.append(c)
+    return unique, removed
 
 # ==============================
-# Helper: Normalize and Strip Names
+# Trap V3 Stub
 # ==============================
-def strip_prefix(raw_name: str) -> str:
-    return re.sub(r'^\s*\d+[\.\)]\s*', '', raw_name).strip()
-
-def normalize_name(raw_name: str) -> str:
-    s = unicodedata.normalize('NFKC', raw_name)
-    s = s.replace('≥', '>=').replace('≤', '<=')
-    s = s.replace('\u2265', '>=')
-    s = s.replace('\u2264', '<=')
-    s = s.replace('→', '->').replace('\u2192', '->')
-    s = s.replace('–', '-').replace('—', '-')
-    s = s.replace('\u200B', '').replace('\u00A0', ' ')
-    s = re.sub(r'\s+', ' ', s)
-    return s.strip().lower()
+def apply_trap_v3(pool, hot_digits, cold_digits, due_digits):
+    # TODO: implement Trap V3 ranking logic
+    return pool, []
 
 # ==============================
-# Load Manual Filters
+# Main App UI
 # ==============================
-manual_txt_path = "manual_filters_full.txt"
-if os.path.exists(manual_txt_path):
-    raw_txt = open(manual_txt_path, 'r').read()
-    st.info(f"Loaded raw manual filters from {manual_txt_path}")
-    parsed, skipped = parse_manual_filters_txt(raw_txt)
-    st.text_area("Raw manual filter lines", raw_txt, height=200)
-    st.write(f"Parsed {len(parsed)} manual filter blocks")
-    if skipped:
-        with st.expander(f"⚠️ {len(skipped)} filters skipped due to format issues. Click to view."):
-            for sb in skipped:
-                st.code(sb[:300] + ("..." if len(sb) > 300 else ""))
+st.set_page_config(layout="wide")
+st.title("DC-5 Midday Blind Predictor")
 
-    # ==============================
-    # Render Parsed Filters as Actionable Toggles
-    # ==============================
-    st.markdown("### 🎯 Manual Filter Selection")
+# Sidebar: Inputs
+st.sidebar.header("🔧 Inputs and Settings")
+prev_seed = st.sidebar.text_input("Previous 5-digit seed:")
+seed = st.sidebar.text_input("Current 5-digit seed:")
+hot_digits = [d for d in st.sidebar.text_input("Hot digits (comma-separated):").replace(' ', '').split(',') if d]
+cold_digits = [d for d in st.sidebar.text_input("Cold digits (comma-separated):").replace(' ', '').split(',') if d]
+due_digits = [d for d in st.sidebar.text_input("Due digits (comma-separated):").replace(' ', '').split(',') if d]
+method = st.sidebar.selectbox("Generation Method:", ["1-digit", "2-digit pair"])
+enable_trap = st.sidebar.checkbox("Enable Trap V3 Ranking")
 
-    filter_types = {
-        "hyphen": [],
-        "<": [],
-        "<=": [],
-        ">": [],
-        ">=" : [],
-        "=": [],
-        "seed->winner": [],
-        "shared+sum": [],
-        "spread+sum": [],
-        "mirror+sum": [],
-        "named": [],
-        "unclassified": []
-    }
-
-    for pf in parsed:
-        raw_name = pf['name']
-        stripped = strip_prefix(raw_name)
-        norm = normalize_name(stripped)
-        lower = norm.lower()
-
-        if re.search(r'seed sum\s*(=)?\s*\d+\s*-\s*\d+', lower):
-            filter_types["hyphen"].append(pf)
-        elif re.search(r'seed sum\s*<=\s*\d+', lower):
-            filter_types["<="].append(pf)
-        elif re.search(r'seed sum\s*<\s*\d+', lower):
-            filter_types["<"].append(pf)
-        elif re.search(r'seed sum\s*>=\s*\d+', lower):
-            filter_types[">="].append(pf)
-        elif re.search(r'seed sum\s*>\s*\d+', lower):
-            filter_types[">"].append(pf)
-        elif re.search(r'seed sum\s*=\s*\d+', lower):
-            filter_types["="].append(pf)
-        elif 'seed contains' in lower and 'winner must contain' in lower:
-            filter_types["seed->winner"].append(pf)
-        elif 'shared digits' in lower and 'sum' in lower:
-            filter_types["shared+sum"].append(pf)
-        elif 'digit spread' in lower and 'sum' in lower:
-            filter_types["spread+sum"].append(pf)
-        elif 'mirror count' in lower and 'sum' in lower:
-            filter_types["mirror+sum"].append(pf)
-        elif any(tag in lower for tag in ["digit spread", "mirror", "prime", "v-trac", "repeating digit", "consecutive"]):
-            filter_types["named"].append(pf)
-        else:
-            filter_types["unclassified"].append(pf)
-
-    for group, flist in filter_types.items():
-        if not flist:
-            continue
-        st.markdown(f"#### 🧮 Filter Type: `{group}` ({len(flist)} filters)")
-        for f in flist:
-            label = strip_prefix(f['name'])
-            key = f"filter_{normalize_name(label)}"
-            st.checkbox(label, value=False, key=key)
+# Sidebar: Filter Overview
+st.sidebar.header("🔍 Filters Overview")
+st.sidebar.write(f"Total filters loaded: **{filter_count}**")
+if filter_count > 0:
+    types = pd.Series([f['type'] for f in filters]).value_counts().to_dict()
+    for t, cnt in types.items():
+        st.sidebar.write(f"- {t.title()}: {cnt}")
+if filter_count != 396:
+    st.sidebar.warning(f"Expected 396 filters but loaded {filter_count}. Please verify CSV.")
 else:
-    st.error("manual_filters_full.txt not found.")
+    st.sidebar.success("All 396 filters loaded.")
+
+filter_names = [f.get('name', '') for f in filters]
+selected = st.sidebar.multiselect("Select manual filters to apply (any order):", filter_names)
+
+# Display seeds
+if prev_seed:
+    st.sidebar.write(f"Previous seed: {prev_seed}")
+if seed:
+    st.sidebar.write(f"Current seed: {seed}")
+
+# Workflow: Generation & Filtering
+if seed:
+    # 1. Full enumeration
+    full_enum = [str(i).zfill(5) for i in range(100000)]
+    st.write(f"Step 1: Full enumeration — **{len(full_enum)}** combos.")
+
+    # 2. Primary percentile filter
+    pct_filtered, pct_removed = apply_primary_percentile(full_enum)
+    st.write(f"Step 2: Primary percentile filter removed **{len(pct_removed)}**, remaining **{len(pct_filtered)}**.")
+
+    # 3. Deduplication
+    deduped, dedup_removed = apply_deduplication(pct_filtered)
+    st.write(f"Step 3: Deduplication removed **{len(dedup_removed)}**, remaining **{len(deduped)}**.")
+
+    # 4. Seed-based generation
+    if method == "1-digit":
+        seed_pool = [c for c in deduped if any(d in c for d in seed)]
+    else:
+        pairs = [seed[i:i+2] for i in range(4)]
+        seed_pool = [c for c in deduped if any(p in c for p in pairs)]
+    st.write(f"Step 4: Seed-based generation ({method}) yields **{len(seed_pool)}** combos.")
+
+    # 5. Comparison filter
+    session_pool = [c for c in deduped if c in seed_pool]
+    removed_cmp = len(deduped) - len(session_pool)
+    st.write(f"Step 5: Comparison filter removed **{removed_cmp}**, remaining **{len(session_pool)}**.")
+
+    # 6. Manual filters
+    for fname in selected:
+        filt = next((f for f in filters if f.get('name') == fname), None)
+        if not filt:
+            continue
+        # TODO: implement each f['logic']
+        removed = []
+        session_pool = [c for c in session_pool if c not in removed]
+        st.write(f"**{fname}** removed **{len(removed)}**, remaining **{len(session_pool)}**.")
+
+    # 7. Trap V3
+    if enable_trap:
+        session_pool, trap_removed = apply_trap_v3(session_pool, hot_digits, cold_digits, due_digits)
+        st.write(f"Trap V3 removed **{len(trap_removed)}**, remaining **{len(session_pool)}**.")
+
+    st.write(f"**Final pool size:** **{len(session_pool)}** combos.")
+else:
+    st.info("Enter a current 5-digit seed to generate and filter combos.")
+
+# Footer
+st.sidebar.write("🛠️ Workflow: enumeration → percentile → dedupe → seed gen → compare → manual filters → trapV3.")
